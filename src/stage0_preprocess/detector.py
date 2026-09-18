@@ -10,45 +10,58 @@ class FaceDetection:
     det_score: float          # InsightFace detection confidence (used for beta fusion weights)
     yaw_deg: float            # Head yaw angle in degrees
     crop_112: np.ndarray      # (112, 112, 3) aligned crop for MICA / ArcFace
-    crop_224: np.ndarray      # (224, 224, 3) aligned crop for SMIRK / EMOCA
+    crop_224: Optional[np.ndarray] = None  # (224, 224, 3) aligned crop for SMIRK / EMOCA
+    embedding: Optional[np.ndarray] = None  # (512,) ArcFace normalized feature embedding
 
 class FaceDetector:
     """
     Detects faces, computes 5-point landmarks, estimates head orientation,
     and extracts canonical aligned crops for downstream networks.
     """
-    def __init__(self, ctx_id: int = 0):
+    def __init__(self, ctx_id: int = 0, allow_degraded: bool = False):
+        self.allow_degraded = allow_degraded
         try:
             import insightface
             self.app = insightface.app.FaceAnalysis(
+                name='buffalo_l',
                 providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
             )
             self.app.prepare(ctx_id=ctx_id, det_size=(640, 640))
             self.has_insightface = True
         except Exception as e:
-            print(f"[Stage 0] Warning: InsightFace initialization deferred ({e}).")
+            if not self.allow_degraded:
+                raise RuntimeError(
+                    "InsightFace is required for Stage 0 face detection and alignment. "
+                    "Install with: pip install insightface onnxruntime-gpu"
+                ) from e
+            print(f"[Stage 0] Warning: Running in degraded mode (InsightFace missing: {e}).")
             self.app = None
             self.has_insightface = False
 
     def detect(self, image_bgr: np.ndarray) -> List[FaceDetection]:
         if not self.has_insightface or self.app is None:
-            # Fallback simple crop if insightface isn't installed in environment
+            if not self.allow_degraded:
+                raise RuntimeError("Face detection requested but InsightFace is not initialized.")
             h, w = image_bgr.shape[:2]
-            c112 = cv2.resize(image_bgr, (112, 112))
-            c224 = cv2.resize(image_bgr, (224, 224))
             return [FaceDetection(
                 bbox=np.array([0, 0, w, h], dtype=np.float32),
                 landmarks_5pt=np.zeros((5, 2), dtype=np.float32),
                 det_score=0.99,
                 yaw_deg=0.0,
-                crop_112=c112,
-                crop_224=c224,
+                crop_112=cv2.resize(image_bgr, (112, 112)),
+                crop_224=cv2.resize(image_bgr, (224, 224)),
+                embedding=np.zeros(512, dtype=np.float32),
             )]
 
         faces = self.app.get(image_bgr)
         results = []
         for face in faces:
-            yaw = float(face.pose[1]) if hasattr(face, 'pose') and face.pose is not None else 0.0
+            emb = None
+            if hasattr(face, 'normed_embedding') and face.normed_embedding is not None:
+                emb = face.normed_embedding
+            elif hasattr(face, 'embedding') and face.embedding is not None:
+                emb = face.embedding / (np.linalg.norm(face.embedding) + 1e-12)
+
             det = FaceDetection(
                 bbox=face.bbox,
                 landmarks_5pt=face.kps,
@@ -56,6 +69,7 @@ class FaceDetector:
                 yaw_deg=yaw,
                 crop_112=self._align_crop(image_bgr, face.kps, size=112),
                 crop_224=self._align_crop(image_bgr, face.kps, size=224),
+                embedding=emb,
             )
             results.append(det)
         return results

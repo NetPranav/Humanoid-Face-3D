@@ -11,13 +11,22 @@ class ValidationResult:
     warnings: List[str] = field(default_factory=list)
     detections: List[Optional[FaceDetection]] = field(default_factory=list)
 
-def validate_inputs(photo_paths: List[str], min_photos: int = 3, same_person_thresh: float = 0.40) -> ValidationResult:
+def validate_inputs(
+    photo_paths: List[str],
+    detector: Optional[FaceDetector] = None,
+    min_photos: int = 3,
+    same_person_thresh: float = 0.40,
+    min_face_confidence: float = 0.50
+) -> ValidationResult:
     """
     Validates input photos prior to running reconstruction.
-    Verifies face presence, pairwise identity consistency, pose coverage, and angular spread.
+    Verifies face presence, detection confidence, pairwise identity consistency,
+    pose coverage, and angular spread.
+    Reuses pre-extracted ArcFace embeddings from FaceDetection.
     """
     result = ValidationResult(is_valid=True)
-    detector = FaceDetector()
+    if detector is None:
+        detector = FaceDetector()
 
     images = []
     detections = []
@@ -37,18 +46,17 @@ def validate_inputs(photo_paths: List[str], min_photos: int = 3, same_person_thr
             result.errors.append(f"No face detected in photo {idx+1} ({path}). Ensure face is visible and well-lit.")
             result.is_valid = False
             detections.append(None)
+        elif det.det_score < min_face_confidence:
+            result.errors.append(
+                f"Face detection confidence in photo {idx+1} ({det.det_score:.2f}) is below threshold ({min_face_confidence:.2f})."
+            )
+            result.is_valid = False
+            detections.append(None)
         else:
             detections.append(det)
             images.append(img)
-            # Embedding check if insightface model zoo is available
-            try:
-                import insightface
-                arcface = insightface.model_zoo.get_model('buffalo_l')
-                arcface.prepare(ctx_id=0)
-                emb = arcface.get_feat(det.crop_112)
-                embeddings.append(emb / np.linalg.norm(emb))
-            except Exception:
-                pass
+            if det.embedding is not None:
+                embeddings.append(det.embedding)
 
     result.detections = detections
     if not result.is_valid:

@@ -1,43 +1,52 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Face Geometry Reconstruction Pipeline — Default Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+
 pipeline:
-  stages: [0, 1, 2, 5]   # Active stages (3 and 4 enabled when trained)
-  input_min_photos: 3
-  input_max_photos: 5
+  stages: [0, 1, 2, 5]            # Active pipeline stages (Stage 3 & 4 enabled when checkpoints exist)
+  input_min_photos: 3             # Strict minimum photos required for reliable 3D triangulation
+  input_max_photos: 5             # Maximum views fused in embedding space
 
 stage0:
-  detector: insightface
-  landmark_model: mediapipe
-  align_size: 224
-  min_face_confidence: 0.5
+  detector: insightface           # Buffalo_l ArcFace + RetinaFace detector
+  min_face_confidence: 0.5        # Minimum detection confidence required per photo
 
 stage1:
   model: mica
+  # FLAME Model Variant:
+  # - 'FLAME2020': MPI standard research model (non-commercial academic license, requires registration).
+  # - 'FLAME2023_open': Open-source / Apache 2.0 permissive weights variant.
   flame_version: FLAME2020
-  beta_dims: 300
-  fusion: confidence_weighted   # InsightFace det_score softmax weighting (NOT flat average)
+  beta_dims: 300                  # Shape coefficient dimensionality
+  fusion: confidence_weighted     # Confidence + yaw angle softmax weighting
+  fusion_temperature: 0.05        # Softmax temperature: lower values prioritize highest quality frontal views
+  yaw_weight_exponent: 2          # Cosine exponent for yaw penalty: w_i = det_score_i * cos(yaw_i)^2
 
 stage2:
-  model: smirk                  # Permissively licensed expression extractor
-  expression_dims: 100
-  neutral_output: true          # Base mesh always canonical neutral (psi=0, theta=neutral)
+  model: smirk                    # Permissively licensed expression & pose extractor
+  expression_dims: 100            # Expression coefficient dimensionality (psi)
+  neutral_output: true            # Base mesh always canonical neutral (psi=0, theta=neutral) for UE5 ARKit
 
 stage3:
-  resolution: 512
-  in_channels: 6                # Position (3) + Normal (3) maps rasterized from neutral mesh
-  out_channels: 1               # Scalar displacement magnitude
+  resolution: 512                 # UV displacement map resolution (512x512)
+  in_channels: 6                  # Position (3) + Normal (3) maps rasterized from neutral mesh
+  out_channels: 1                 # Scalar displacement magnitude along surface normals
   base_channels: 64
   backbone_dim: 512
-  recon_lambda_start: 100.0
-  recon_lambda_end: 10.0
-  recon_anneal_steps: 50000
-  r1_gamma: 10.0
-  ema_decay: 0.999
+  recon_lambda_start: 100.0       # L1 reconstruction loss weight at step 0
+  recon_lambda_end: 10.0          # L1 reconstruction loss weight after annealing
+  recon_anneal_steps: 50000       # Annealing steps for detail synthesis
+  r1_gamma: 10.0                  # R1 gradient penalty weight (evaluated in FP32 on T4)
+  ema_decay: 0.999                # Exponential moving average decay for generator weights
+  id_loss_lambda: 5.0             # Identity preservation loss weight
+  photo_loss_lambda: 1.0          # Photometric consistency loss weight
 
 stage5:
-  topology: ict_facekit
-  lod_triangle_counts: [24500, 5000, 2000, 500]
-  blendshape_standard: arkit52
-  export_format: fbx
+  topology: ict_facekit           # Production target topology (ICT-FaceKit, MIT license)
+  lod_triangle_counts: [24500, 5000, 2000, 500]  # LOD0 through LOD3 decimation targets
+  blendshape_standard: arkit52    # Apple ARKit-52 standard blendshape naming and semantics
+  export_format: fbx              # UE5 Live Link compatible skeletal mesh FBX
 
 evaluation:
-  arcface_threshold: 0.5
-  now_benchmark: false
+  arcface_threshold: 0.5          # Minimum cosine similarity for same-identity verification
+  now_benchmark: false            # Run NoW benchmark evaluation (MICA target: ~0.90mm median error)

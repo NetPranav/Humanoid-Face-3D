@@ -1,40 +1,47 @@
-import torch
-from torch.utils.data import Dataset
 from pathlib import Path
 import cv2
 import numpy as np
+import random
+
+try:
+    import torch
+    from torch.utils.data import Dataset
+except ImportError:
+    torch = None
+    class Dataset:
+        pass
 
 class UVDisplacementDataset(Dataset):
     """
     PyTorch Dataset loading preprocessed UV displacement map pairs,
     neutral position & normal conditioning maps, and facial validity masks.
+    Enforces subject-stratified splits and strict [-1, 1] normalization matching tanh.
     """
     def __init__(self, data_dir: str, is_train: bool = True):
         self.data_dir = Path(data_dir)
         self.disp_files = sorted(list(self.data_dir.glob('*_disp.png')))
         if not self.disp_files:
-            # Provide dummy fallback sample for local pipeline testing / dry runs
-            self.files = []
-        else:
-            split_idx = int(0.9 * len(self.disp_files))
-            self.files = self.disp_files[:split_idx] if is_train else self.disp_files[split_idx:]
+            raise RuntimeError(
+                f"No *_disp.png files found in {data_dir}. "
+                "Ensure scripts/build_uv_displacement_dataset.py has executed successfully."
+            )
+
+        # Subject-stratified split (prevents same subject appearing in both train and val)
+        subjects = sorted({p.stem.split('_')[0] for p in self.disp_files})
+        rng = random.Random(1337)
+        rng.shuffle(subjects)
+        val_count = max(1, int(len(subjects) * 0.1))
+        val_subjects = set(subjects[:val_count])
+
+        self.files = [
+            p for p in self.disp_files
+            if (p.stem.split('_')[0] in val_subjects) != is_train
+        ]
 
     def __len__(self) -> int:
-        return max(len(self.files), 1)
+        return len(self.files)
 
     def __getitem__(self, idx: int) -> dict:
-        if not self.files:
-            # Fallback zero-filled tensors
-            return {
-                'disp': torch.zeros((1, 512, 512), dtype=torch.float32),
-                'pos': torch.zeros((3, 512, 512), dtype=torch.float32),
-                'norm': torch.zeros((3, 512, 512), dtype=torch.float32),
-                'mask': torch.ones((1, 512, 512), dtype=torch.float32),
-                'beta': torch.zeros(300, dtype=torch.float32),
-                'psi': torch.zeros(100, dtype=torch.float32),
-                'per_view_feats': torch.zeros((3, 512), dtype=torch.float32),
-            }
-
         disp_path = self.files[idx]
         stem = disp_path.stem.replace('_disp', '')
         pos_path = self.data_dir / f"{stem}_pos.png"
@@ -42,7 +49,14 @@ class UVDisplacementDataset(Dataset):
         mask_path = self.data_dir / f"{stem}_mask.png"
         meta_path = self.data_dir / f"{stem}_meta.npz"
 
-        disp = cv2.imread(str(disp_path), cv2.IMREAD_UNCHANGED).astype(np.float32)
+        # Read displacement with 16-bit -> [-1, 1] contract
+        raw_disp = cv2.imread(str(disp_path), cv2.IMREAD_UNCHANGED)
+        if raw_disp.dtype == np.uint16:
+            disp = (raw_disp.astype(np.float32) / 65535.0) * 2.0 - 1.0
+        else:
+            disp = raw_disp.astype(np.float32)
+            if disp.max() > 1.0:
+                disp = (disp / 255.0) * 2.0 - 1.0
         pos = cv2.imread(str(pos_path), cv2.IMREAD_COLOR).astype(np.float32) / 255.0
         norm = cv2.imread(str(norm_path), cv2.IMREAD_COLOR).astype(np.float32) / 255.0
         mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE).astype(np.float32) / 255.0

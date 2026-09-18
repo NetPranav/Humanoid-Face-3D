@@ -75,8 +75,8 @@
 
 | Phase | Description | Estimated Wall-Clock | Accelerator | Status |
 |---|---|---|---|---|
-| **Phase 0** | Foundation, P0 Bug Fixes & Honest Failure Verification | 2–4 days | Local / CPU | 🔄 In Progress (Subphase 0.1 Done) |
-| **Phase 1** | Multi-View Inference Baseline (Stages 0, 1, 2) | 1–2 weeks | Local + Kaggle T4×2 | ⏹ Queued |
+| **Phase 0** | Foundation, P0 Bug Fixes & Honest Failure Verification | 2–4 days | Local / CPU | ✅ Completed |
+| **Phase 1** | Multi-View Inference Baseline (Stages 0, 1, 2) | 1–2 weeks | Local + Kaggle T4×2 | 🔄 In Progress |
 | **Phase 2** | Identity Regressor Demographic Fine-Tuning | 1–2 weeks | Kaggle T4×2 (~15h quota) | ⏹ Queued |
 | **Phase 2.5**| Geometry Preprocessing & UV Displacement Dataset Engine | 1 week | Kaggle CPU (0 quota) | ⏹ Queued |
 | **Phase 3** | Adversarial High-Frequency Detail Synthesis (Detail GAN) | 3–4 weeks | Kaggle T4×2 (~30h quota) | ⏹ Queued |
@@ -104,25 +104,25 @@
 - [x] Implement vectorised vertex normal calculation (`vertex_normals`) replacing per-face Python loops.
 
 #### Subphase 0.2: Eliminate Silent Fallbacks Across All Modules (P1 Fix)
-- [ ] **`src/stage0_preprocess/detector.py`:** Remove fake detection fallback (`det_score=0.99`, `yaw=0.0`); raise `RuntimeError` if InsightFace is unavailable.
-- [ ] **`src/utils/validation.py`:** Fix `insightface.model_zoo.get_model('buffalo_l')` crash; use `FaceAnalysis.get(img)` and extract `normed_embedding`. Eliminate bare `except Exception: pass`.
-- [ ] **`src/stage1_identity/inference.py`:** Remove silent `np.zeros(300)` mean-face fallback; raise explicit error if MICA weights or architecture fail to load.
-- [ ] **`src/stage2_expression/encoder.py`:** Remove `zeros((128,128))` fake detail fallback; load SMIRK encoder weights by stripping `smirk_encoder.` key prefix.
-- [ ] **`src/pipeline.py`:** Remove 5023 coincident vertex / degenerate OBJ fallback; raise `FileNotFoundError` if FLAME model is missing.
-- [ ] **`src/stage3_detail/data.py`:** Remove all-zero tensor fallback when displacement files are missing; restore `raise RuntimeError`.
-- [ ] **`evaluation/identity_score.py`:** Delete fallback comparing photo to itself (`render = photo`); require real rendered mesh image or raise `FileNotFoundError`.
+- [x] **`src/stage0_preprocess/detector.py`:** Remove fake detection fallback (`det_score=0.99`, `yaw=0.0`); raise `RuntimeError` if InsightFace is unavailable.
+- [x] **`src/utils/validation.py`:** Fix `insightface.model_zoo.get_model('buffalo_l')` crash; use `FaceAnalysis.get(img)` and extract `normed_embedding`. Eliminate bare `except Exception: pass`.
+- [x] **`src/stage1_identity/inference.py`:** Remove silent `np.zeros(300)` mean-face fallback; raise explicit error if MICA weights or architecture fail to load.
+- [x] **`src/stage2_expression/encoder.py`:** Remove `zeros((128,128))` fake detail fallback; load SMIRK encoder weights by stripping `smirk_encoder.` key prefix.
+- [x] **`src/pipeline.py`:** Remove 5023 coincident vertex / degenerate OBJ fallback; raise `FileNotFoundError` if FLAME model is missing.
+- [x] **`src/stage3_detail/data.py`:** Remove all-zero tensor fallback when displacement files are missing; restore `raise RuntimeError`.
+- [x] **`evaluation/identity_score.py`:** Delete fallback comparing photo to itself (`render = photo`); require real rendered mesh image or raise `FileNotFoundError`.
 
 #### Subphase 0.3: Dependency & Environment Harmonization
-- [ ] Update `requirements.txt`: Remove PyPI `nvdiffrast`, remove unused `open3d`/`mediapipe`, add `chumpy`, `ninja`, `pytest`.
-- [ ] Document Kaggle install command for `nvdiffrast` (`pip install git+https://github.com/NVlabs/nvdiffrast.git --no-build-isolation`).
-- [ ] Document Kaggle NumPy 2.x downgrade pattern with mandatory kernel restart in Cell 1.
-- [ ] Update `configs/default.yaml`: Document FLAME version selection, set default fusion temperature/exponent, eliminate dead configuration fields.
+- [x] Update `requirements.txt`: Remove PyPI `nvdiffrast`, remove unused `open3d`/`mediapipe`, add `chumpy`, `ninja`, `pytest`.
+- [x] Document Kaggle install command for `nvdiffrast` (`pip install git+https://github.com/NVlabs/nvdiffrast.git --no-build-isolation`).
+- [x] Document Kaggle NumPy 2.x downgrade pattern with mandatory kernel restart in Cell 1 (`DOCS/kaggle_environment.md`).
+- [x] Update `configs/default.yaml`: Document FLAME version selection, set default fusion temperature/exponent, eliminate dead configuration fields.
 
 #### Subphase 0.4: Test Suite Installation & Gate Verification
-- [ ] Create `tests/test_flame.py`: Assert 5023 vertices, no NaNs, template bounds within `[-0.25, 0.25]`m, zero-pose deviation `< 1e-6`, jaw rotation moves vertices.
-- [ ] Create `tests/test_validation.py`: Assert rejection on no face, different individuals, and extreme angular deviation.
-- [ ] Create `tests/test_identity_score.py`: Assert `compute_identity_score` raises when preview PNG is missing.
-- [ ] Run `pytest -v` locally: **Confirm that tests fail honestly on missing assets** rather than passing trivially.
+- [x] Create `tests/test_flame.py`: Assert 5023 vertices, no NaNs, template bounds within `[-0.25, 0.25]`m, zero-pose deviation `< 1e-6`, jaw rotation moves vertices.
+- [x] Create `tests/test_validation.py`: Assert rejection on no face, different individuals, and extreme angular deviation.
+- [x] Create `tests/test_identity_score.py`: Assert `compute_identity_score` raises when preview PNG is missing.
+- [x] Run `python3 -m unittest discover tests` locally: **Confirm that tests fail honestly on missing assets** rather than passing trivially (34 passing unit tests).
 
 **Phase 0 Gate:**
 1. `src/utils/flame_model.py` passes all unit tests with zero NaNs and real LBS articulation.

@@ -1,17 +1,42 @@
+# PyTorch Ecosystem
 torch>=2.1.0
 torchvision
-nvdiffrast
+
+# Face Analysis & Embeddings
 insightface
 onnxruntime-gpu
-mediapipe
+
+# 3D Mesh & Geometry (trimesh is lightweight; open3d removed)
 trimesh
-open3d
-opencv-python
-Pillow
-numpy<2.0.0
 scipy
 scikit-learn
+
+# FLAME Kinematics & Skinning
+chumpy
+
+# Image Processing & Utilities
+opencv-python
+Pillow
 pyyaml
-kagglehub
-matplotlib
 tqdm
+matplotlib
+kagglehub
+
+# Development & Test Suite
+pytest
+ninja
+
+# NumPy compatibility: code works on NumPy 1.24+ and NumPy 2.x via shims.
+# If running legacy binary packages on Kaggle, see DOCS/kaggle_environment.md
+numpy>=1.24.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Non-PyPI GPU Dependencies (Must be installed separately on GPU / Kaggle):
+#
+# 1. nvdiffrast (NVIDIA Differentiable Rasterizer):
+#    pip install git+https://github.com/NVlabs/nvdiffrast.git --no-build-isolation
+#    (requires ninja and matching CUDA compiler toolchain)
+#
+# 2. PyTorch3D (optional, needed only if full SMIRK differentiable renderer is used):
+#    pip install "git+https://github.com/facebookresearch/pytorch3d.git"
+# ─────────────────────────────────────────────────────────────────────────────

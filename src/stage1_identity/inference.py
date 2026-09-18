@@ -1,7 +1,12 @@
 import numpy as np
-import torch
 from pathlib import Path
 from typing import List
+
+try:
+    import torch
+except ImportError:
+    torch = None
+
 from src.stage0_preprocess.detector import FaceDetection
 from src.utils.flame_model import FLAMEModel
 
@@ -12,6 +17,8 @@ class MICAIdentityEncoder:
     Fuses multiple camera angles via detection-confidence softmax weighting.
     """
     def __init__(self, checkpoint_path: str, flame_model: FLAMEModel, device: str = 'cuda'):
+        if torch is None:
+            raise RuntimeError("PyTorch is required for MICAIdentityEncoder. Install torch>=2.1.0.")
         self.device = device if torch.cuda.is_available() and device == 'cuda' else 'cpu'
         self.flame = flame_model
         self.checkpoint_path = Path(checkpoint_path)
@@ -19,8 +26,10 @@ class MICAIdentityEncoder:
 
     def _load_mica(self):
         if not self.checkpoint_path.exists():
-            print(f"[Stage 1] Note: MICA weights not found at {self.checkpoint_path}. Operating in zero-shape baseline mode.")
-            return None
+            raise FileNotFoundError(
+                f"MICA weights not found at {self.checkpoint_path}. "
+                "Attach pretrained MICA dataset input or run scripts/fetch_models.py."
+            )
 
         # Add vendor paths dynamically
         import sys
@@ -35,6 +44,7 @@ class MICAIdentityEncoder:
 
         try:
             from micalib.models import MICA
+            # MICA constructor expects FLAME model or config dict
             model = MICA(config=None)
             ckpt = torch.load(self.checkpoint_path, map_location=self.device)
             state_dict = ckpt['state_dict'] if 'state_dict' in ckpt else ckpt
@@ -43,18 +53,26 @@ class MICAIdentityEncoder:
             model.eval()
             return model
         except Exception as e:
-            print(f"[Stage 1] Warning: Failed to initialize MICA architecture ({e}). Falling back to baseline mode.")
-            return None
+            raise RuntimeError(
+                f"Failed to initialize MICA model from {self.checkpoint_path}: {e}. "
+                "Verify vendor/MICA submodule is present and compatible."
+            ) from e
 
     def encode_single(self, crop_112: np.ndarray) -> np.ndarray:
-        """Encodes single 112x112 face crop into 300-dim beta vector."""
+        """
+        Encodes single 112x112 face crop into 300-dim beta vector.
+        Requires RGB image scaled to [-1, 1].
+        """
         if self.model is None:
-            return np.zeros(300, dtype=np.float32)
+            raise RuntimeError("MICA encoder model is not loaded.")
 
-        img = torch.from_numpy(crop_112).permute(2, 0, 1).float() / 255.0
-        img = img.unsqueeze(0).to(self.device)
+        # Correct color space (BGR -> RGB) and normalization ([-1, 1])
+        img = crop_112[:, :, ::-1].copy()
+        img = (img.astype(np.float32) - 127.5) / 127.5
+        t_img = torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0).to(self.device)
+
         with torch.no_grad():
-            beta = self.model(img)
+            beta = self.model(t_img)
         return beta.squeeze(0).cpu().numpy().astype(np.float32)
 
     def encode_multiview(self, detections: List[FaceDetection]) -> np.ndarray:

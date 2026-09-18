@@ -16,7 +16,7 @@ class FaceGeoPipeline:
     estimates expression, neutralizes the base geometry for UE5 ARKit deltas,
     synthesizes high-frequency micro-displacement, and packages game-ready outputs.
     """
-    def __init__(self, config_path: str, model_dir: str):
+    def __init__(self, config_path: str, model_dir: str, detector: Optional[FaceDetector] = None):
         with open(config_path, 'r') as f:
             self.cfg = yaml.safe_load(f)
 
@@ -27,7 +27,12 @@ class FaceGeoPipeline:
             flame_path = Path('./data/flame_model/generic_model.pkl')
 
         self.flame = FLAMEModel(str(flame_path)) if flame_path.exists() else None
-        self.detector = FaceDetector()
+
+        if detector is not None:
+            self.detector = detector
+        else:
+            allow_degraded = self.cfg.get('allow_degraded', False) if isinstance(self.cfg, dict) else False
+            self.detector = FaceDetector(allow_degraded=allow_degraded)
 
         # Lazy-loaded network models
         self._stage1 = None
@@ -56,21 +61,20 @@ class FaceGeoPipeline:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # ── Pre-flight input validation ──────────────────────────────────────
-        val_res = validate_inputs(photo_paths)
+        # ── Pre-flight input validation & detection ──────────────────────────
+        print("[Stage 0] Validating input portraits and extracting alignments...")
+        min_photos = self.cfg.get('pipeline', {}).get('input_min_photos', 3) if isinstance(self.cfg, dict) else 3
+        min_face_conf = self.cfg.get('stage0', {}).get('min_face_confidence', 0.5) if isinstance(self.cfg, dict) else 0.5
+        val_res = validate_inputs(
+            photo_paths,
+            detector=self.detector,
+            min_photos=min_photos,
+            min_face_confidence=min_face_conf
+        )
         if not val_res.is_valid:
-            print(f"[Validation Warning] Input validation reported errors: {val_res.errors}")
+            raise ValueError(f"Input validation failed: {'; '.join(val_res.errors)}")
 
-        # ── Stage 0: Preprocess ──────────────────────────────────────────────
-        print("[Stage 0] Detecting faces and aligning crops...")
-        detections = []
-        for p in photo_paths:
-            img = cv2.imread(str(p))
-            if img is not None:
-                det = self.detector.detect_single(img)
-                detections.append(det)
-            else:
-                detections.append(None)
+        detections = val_res.detections
 
         # ── Stage 1: Identity ────────────────────────────────────────────────
         print("[Stage 1] Regressing identity shape (multi-view confidence-weighted)...")
@@ -78,28 +82,26 @@ class FaceGeoPipeline:
         beta = stage1.encode_multiview(detections)
 
         # ── Stage 2: Expression ──────────────────────────────────────────────
-        print("[Stage 2] Regressing expression and coarse detail...")
+        print("[Stage 2] Regressing facial expression and pose...")
         valid_dets = [d for d in detections if d is not None]
         frontal_det = max(valid_dets, key=lambda d: d.det_score) if valid_dets else None
         stage2 = self._get_stage2()
-        expression_psi, pose_theta, coarse_detail = stage2.encode(frontal_det)
+        expression_psi, pose_theta = stage2.encode(frontal_det)
 
         # ── Neutral-expression normalization (CRITICAL) ──────────────────────
         # Base mesh is exported in canonical neutral pose (psi=0, theta=neutral).
         # Ensures ARKit-52 blendshape target offsets in UE5 remain mathematically correct.
         print("[Neutral Normalization] Generating canonical neutral base mesh (psi=0, theta=neutral)...")
-        if self.flame is not None:
-            neutral_vertices, faces = self.flame.decode_neutral(beta)
-        else:
-            # Fallback cube mesh for headless verification when FLAME model pkl is omitted
-            neutral_vertices = np.zeros((5023, 3), dtype=np.float32)
-            faces = np.zeros((9976, 3), dtype=np.int32)
+        if self.flame is None:
+            raise RuntimeError(
+                "FLAME model is not initialized. A valid FLAME model file "
+                "(e.g. data/flame_model/generic_model.pkl) is required to decode base geometry."
+            )
+        neutral_vertices, faces = self.flame.decode_neutral(beta)
 
-        np.save(output_dir / 'coarse_detail.npy', coarse_detail)
         expression_metadata = {
             'expression_psi': expression_psi.tolist(),
             'pose_theta': pose_theta.tolist(),
-            'coarse_detail_map_path': str(output_dir / 'coarse_detail.npy'),
         }
 
         # ── Stage 3: Micro-displacement detail synthesis ────────────────────

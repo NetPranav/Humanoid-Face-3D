@@ -87,6 +87,9 @@ class TestFLAMEModel(unittest.TestCase):
         self.assertEqual(flame.exprdirs.shape, (N_VERTS, 3, N_EXPR))
         self.assertEqual(flame.units, "m")
         self.assertFalse(np.isnan(flame.v_template).any())
+        # Template bounds must fall within human head dimension [-0.25, 0.25] metres
+        self.assertTrue(np.all(flame.v_template >= -0.25))
+        self.assertTrue(np.all(flame.v_template <= 0.25))
 
     def test_flame_scale_to_mm(self):
         """Verify scale_to_mm converts dimensions from metres to millimetres."""
