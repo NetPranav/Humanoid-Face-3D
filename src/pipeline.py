@@ -45,7 +45,19 @@ class FaceGeoPipeline:
             mica_ckpt = self.model_dir / 'mica/pretrained.tar'
             if not mica_ckpt.exists():
                 mica_ckpt = Path('/kaggle/input/mica-pretrained/mica.tar')
-            self._stage1 = MICAIdentityEncoder(str(mica_ckpt), self.flame)
+
+            stage1_cfg = self.cfg.get('stage1', {}) if isinstance(self.cfg, dict) else {}
+            fusion_space = stage1_cfg.get('fusion_space', 'embedding')
+            fusion_temp = float(stage1_cfg.get('fusion_temperature', 0.05))
+            yaw_exp = int(stage1_cfg.get('yaw_weight_exponent', 2))
+
+            self._stage1 = MICAIdentityEncoder(
+                str(mica_ckpt),
+                self.flame,
+                fusion_space=fusion_space,
+                fusion_temperature=fusion_temp,
+                yaw_weight_exponent=yaw_exp
+            )
         return self._stage1
 
     def _get_stage2(self):
@@ -145,6 +157,13 @@ class FaceGeoPipeline:
             for face in faces + 1:  # OBJ indices are 1-based
                 f.write(f"f {face[0]} {face[1]} {face[2]}\n")
 
+        preview_path = output_dir / 'head_mesh.png'
+        try:
+            from evaluation.identity_score import render_neutral_preview
+            render_neutral_preview(str(obj_path), str(preview_path), size=512)
+        except Exception as e:
+            print(f"[Stage 5] Warning: Failed to render preview PNG: {e}")
+
         manifest_path = output_dir / 'manifest.json'
         manifest = {
             'pipeline_version': "0.1.0",
@@ -155,8 +174,13 @@ class FaceGeoPipeline:
             'face_count': int(faces.shape[0]),
             'has_displacement': displacement is not None,
             'has_flame': self.flame is not None,
+            'has_preview': preview_path.exists(),
         }
         with open(manifest_path, 'w') as f:
             json.dump(manifest, f, indent=2)
 
-        return {'obj_path': str(obj_path), 'manifest_path': str(manifest_path)}
+        return {
+            'obj_path': str(obj_path),
+            'manifest_path': str(manifest_path),
+            'preview_path': str(preview_path) if preview_path.exists() else None
+        }

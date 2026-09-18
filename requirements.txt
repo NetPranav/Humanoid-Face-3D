@@ -21,6 +21,8 @@ pyyaml
 tqdm
 matplotlib
 kagglehub
+loguru
+yacs
 
 # Development & Test Suite
 pytest

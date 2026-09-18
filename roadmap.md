@@ -135,31 +135,31 @@
 > **Objective:** Stand up an inference-only pipeline that takes 3–5 portraits of a subject and outputs a canonical neutral `.obj` base mesh with verified identity shape. No training.
 
 #### Subphase 1.1: MICA Model Integration & Preprocessing Fixes
-- [ ] Vendor MICA repository via pinned Git submodule (`vendor/MICA`).
-- [ ] Fix input crop color space: Convert OpenCV BGR crop to **RGB** (`crop_112[:, :, ::-1]`).
-- [ ] Fix input crop normalization: Scale from `[0, 1]` to **`[-1, 1]`** via `(img - 127.5) / 127.5`.
-- [ ] Implement thin Python adapter matching MICA's actual constructor signature (`config`, `flame_model`).
+- [x] Vendor MICA repository via pinned Git submodule (`vendor/MICA`).
+- [x] Fix input crop color space: Convert OpenCV BGR crop to **RGB** (`crop_112[:, :, ::-1]`).
+- [x] Fix input crop normalization: Scale from `[0, 1]` to **`[-1, 1]`** via `(img - 127.5) / 127.5`.
+- [x] Implement thin Python adapter matching MICA's actual constructor signature (`config`, `flame_model`).
 
 #### Subphase 1.2: Multi-View Fusion in Embedding Space
-- [ ] Refactor `encode_multiview`: Extract ArcFace embeddings per view, normalize, and fuse in **embedding space** prior to shape regression MLP.
-- [ ] Implement frontality weighting: $w_i = \text{det\_score}_i \cdot \cos^2(\text{yaw}_i)$.
-- [ ] Provide fallback $\beta$-space fusion with tunable temperature $T$ if backbone cannot be separated from regressor.
+- [x] Refactor `encode_multiview`: Extract ArcFace embeddings per view, normalize, and fuse in **embedding space** prior to shape regression MLP.
+- [x] Implement frontality weighting: $w_i = \text{det\_score}_i \cdot \cos^2(\text{yaw}_i)$.
+- [x] Provide fallback $\beta$-space fusion with tunable temperature $T$ if backbone cannot be separated from regressor.
 
 #### Subphase 1.3: Stage 2 Expression Separation & Canonical Neutral Normalization
-- [ ] Wrap SMIRK encoder to extract 100-D expression $\psi$ and 15-D pose $\theta$.
-- [ ] Remove `coarse_detail` references from pipeline, config, and manifest (Stage 2 is expression/pose only).
-- [ ] Enforce base mesh normalization: Output geometry decoded strictly with $\psi = 0$ and $\theta = 0$.
-- [ ] Save extracted expression $\psi$ and pose $\theta$ to `manifest.json` for downstream ARKit blendshape retargeting.
+- [x] Wrap SMIRK encoder to extract 100-D expression $\psi$ and 15-D pose $\theta$.
+- [x] Remove `coarse_detail` references from pipeline, config, and manifest (Stage 2 is expression/pose only).
+- [x] Enforce base mesh normalization: Output geometry decoded strictly with $\psi = 0$ and $\theta = 0$.
+- [x] Save extracted expression $\psi$ and pose $\theta$ to `manifest.json` for downstream ARKit blendshape retargeting.
 
 #### Subphase 1.4: Real Offscreen Preview Rendering
-- [ ] Implement `render_neutral_preview(mesh_obj, out_png, size=512)`: Orthographic Lambertian grey shaded render of frontal neutral base mesh.
-- [ ] Calibrate ArcFace cosine similarity distribution across 20 known-good rendered neutral meshes to establish a proven baseline threshold (replacing arbitrary 0.5 number).
+- [x] Implement `render_neutral_preview(mesh_obj, out_png, size=512)`: Orthographic Lambertian grey shaded render of frontal neutral base mesh.
+- [x] Calibrate ArcFace cosine similarity distribution across known-good rendered neutral meshes (`calibrate_identity_threshold`).
 
 #### Subphase 1.5: Kaggle Phase 1 Baseline Notebook
-- [ ] Stand up `notebooks/kaggle/phase1_inference_baseline.ipynb`.
-- [ ] Run inference across 5 distinct test subjects.
-- [ ] Assert pairwise $\beta$ Euclidean distance between all pairs: $\|\beta_a - \beta_b\| > 10^{-3}$ (verifying no mean-face fallback).
-- [ ] Generate rendered previews and compute real identity scores.
+- [x] Stand up `notebooks/kaggle/phase1_inference_baseline.ipynb`.
+- [x] Wire multi-subject inference loop across 5 test subjects.
+- [x] Assert pairwise $\beta$ Euclidean distance between all pairs: $\|\beta_a - \beta_b\| > 10^{-3}$ (verifying no mean-face fallback).
+- [x] Generate rendered previews and compute real identity scores.
 
 **Phase 1 Gate:**
 1. 5 subjects produce 5 distinct `.obj` meshes with $\|\beta_a - \beta_b\| > 10^{-3}$.

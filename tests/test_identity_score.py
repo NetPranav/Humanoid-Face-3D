@@ -99,5 +99,29 @@ class TestIdentityScore(unittest.TestCase):
         self.assertEqual(score, 0.91)
         self.assertEqual(len(mock_eval.evaluate_calls), 1)
 
+    def test_calibrate_identity_threshold_calculation(self):
+        """Verify calibrate_identity_threshold correctly summarizes statistics and sets threshold."""
+        from evaluation.identity_score import calibrate_identity_threshold
+
+        mesh_path = self.temp_path / "model.obj"
+        mesh_path.write_text("# dummy obj")
+        preview_path = self.temp_path / "model.png"
+        preview_img = np.full((128, 128, 3), 180, dtype=np.uint8)
+        cv2.imwrite(str(preview_path), preview_img)
+
+        photo_path = self.temp_path / "photo.jpg"
+        photo_img = np.full((128, 128, 3), 120, dtype=np.uint8)
+        cv2.imwrite(str(photo_path), photo_img)
+
+        mock_eval = MockEvaluator(fixed_score=0.82)
+        calib = calibrate_identity_threshold(
+            positive_pairs=[(str(mesh_path), str(photo_path))],
+            evaluator=mock_eval
+        )
+
+        self.assertEqual(calib['positive_count'], 1)
+        self.assertAlmostEqual(calib['positive_mean'], 0.82)
+        self.assertGreaterEqual(calib['recommended_threshold'], 0.40)
+
 if __name__ == "__main__":
     unittest.main()
