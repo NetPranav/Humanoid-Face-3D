@@ -76,9 +76,9 @@
 | Phase | Description | Estimated Wall-Clock | Accelerator | Status |
 |---|---|---|---|---|
 | **Phase 0** | Foundation, P0 Bug Fixes & Honest Failure Verification | 2–4 days | Local / CPU | ✅ Completed |
-| **Phase 1** | Multi-View Inference Baseline (Stages 0, 1, 2) | 1–2 weeks | Local + Kaggle T4×2 | 🔄 In Progress |
-| **Phase 2** | Identity Regressor Demographic Fine-Tuning | 1–2 weeks | Kaggle T4×2 (~15h quota) | ⏹ Queued |
-| **Phase 2.5**| Geometry Preprocessing & UV Displacement Dataset Engine | 1 week | Kaggle CPU (0 quota) | ⏹ Queued |
+| **Phase 1** | Multi-View Inference Baseline (Stages 0, 1, 2) | 1–2 weeks | Local + Kaggle T4×2 | ✅ Completed |
+| **Phase 2** | Identity Regressor Demographic Fine-Tuning | 1–2 weeks | Kaggle T4×2 (~15h quota) | 🔄 Code Ready / Queued |
+| **Phase 2.5**| Geometry Preprocessing & UV Displacement Dataset Engine | 1 week | Kaggle CPU (0 quota) | 🔄 Code Ready / Queued |
 | **Phase 3** | Adversarial High-Frequency Detail Synthesis (Detail GAN) | 3–4 weeks | Kaggle T4×2 (~30h quota) | ⏹ Queued |
 | **Phase 4** | Commercial Licensing & Own-Capture Asset Track | Weeks 1–10 (Parallel) | Business / Legal | ⏹ Queued |
 | **Phase 5** | Production Retopology, ARKit-52 Rigging & LODs | 4–6 weeks | Local / Kaggle CPU | ⏹ Queued |
@@ -172,19 +172,19 @@
 > **Objective:** Fine-tune MICA's regression head on target demographic data to beat pretrained MICA on the NoW benchmark ($< 0.90\text{mm}$ median error).
 
 #### Subphase 2.1: Training Data Preparation
-- [ ] Assemble registered FLAME scans from MICA unified dataset (LYHM, FaceWarehouse, Stirling).
-- [ ] Package registered dataset into private Kaggle Dataset (`face-geo-training-data-stage1`).
-- [ ] Create validation split on held-out subjects.
+- [x] Assemble registered FLAME scans dataset format (`src/stage1_identity/data.py`).
+- [x] Implement subject-stratified split to prevent subject leakage across train/val sets.
+- [ ] Upload registered dataset archive to private Kaggle Dataset (`face-geo-training-data-stage1`).
 
 #### Subphase 2.2: DDP Training Script with PyTorch 2.4+ AMP
-- [ ] Build `src/stage1_identity/trainer.py` using `torch.amp.autocast('cuda', dtype=torch.float16)` and `torch.amp.GradScaler('cuda')`.
-- [ ] Implement multi-GPU DistributedDataParallel (DDP) across both T4 GPUs via `torchrun --nproc_per_node=2`.
-- [ ] Implement 11.5-hour session timer with automatic checkpoint upload.
-- [ ] Stand up `notebooks/kaggle/phase2_finetune_identity.ipynb` using `%%writefile` + `!torchrun`.
+- [x] Build `src/stage1_identity/trainer.py` using `torch.amp.autocast('cuda', dtype=torch.float16)` and `torch.amp.GradScaler('cuda')`.
+- [x] Implement multi-GPU DistributedDataParallel (DDP) across both T4 GPUs via `torchrun --nproc_per_node=2`.
+- [x] Implement 11.5-hour session timer with automatic emergency checkpoint save.
+- [x] Stand up `notebooks/kaggle/phase2_identity_finetune.ipynb` for T4x2 training.
 
 #### Subphase 2.3: Verification on NoW Benchmark
-- [ ] Evaluate fine-tuned checkpoint on NoW validation set.
-- [ ] Verify median scan-to-mesh error improves over pretrained MICA baseline.
+- [ ] Run fine-tuning session on Kaggle T4x2.
+- [ ] Evaluate fine-tuned checkpoint on NoW validation set (< 0.90mm median target).
 - [ ] Push verified checkpoint to Kaggle Models registry with FLAME version metadata.
 
 **Phase 2 Gate:**
@@ -198,27 +198,28 @@
 > **Objective:** Transform raw high-resolution 3D scans (e.g. FaceScape) into paired 512×512 UV displacement maps, neutral position maps, normal maps, and facial validity masks. Run on CPU sessions (0 GPU quota).
 
 #### Subphase 2.1: Ray-Mesh Geometry Correspondence
-- [ ] Implement surface ray-casting using `trimesh.ray`: Cast rays from each coarse FLAME vertex along its normal vector to intersect scan surface.
-- [ ] Compute signed displacement: $\delta_v = (p_{\text{intersect}} - v_{\text{flame}}) \cdot n_v$.
-- [ ] Record `hit_mask`: Exclude non-intersecting or self-occluded vertices.
+- [x] Implement surface ray-casting using `trimesh.ray`: Cast rays from each coarse FLAME vertex along its normal vector to intersect scan surface.
+- [x] Compute signed displacement: $\delta_v = (p_{\text{intersect}} - v_{\text{flame}}) \cdot n_v$.
+- [x] Record `hit_mask`: Exclude non-intersecting or self-occluded vertices.
 
 #### Subphase 2.2: Barycentric UV Triangle Rasterization
-- [ ] Download and integrate FLAME UV coordinates (`head_template.obj` / `FLAME_texture.npz`).
-- [ ] Implement barycentric triangle rasterizer over FLAME UV layout at 512×512 resolution.
-- [ ] Interpolate per-vertex displacement across triangles; dilate mask by 2–4 pixels across UV seams to avoid border artifacts.
-- [ ] Rasterize neutral position map (`pos.png` or `pos.npy`) and unit normal map (`norm.png` or `norm.npy`).
+- [x] Integrate FLAME UV coordinates (`head_template.obj` / `FLAME_texture.npz`).
+- [x] Implement barycentric triangle rasterizer over FLAME UV layout at 512×512 resolution (`rasterize_uv_maps`).
+- [x] Interpolate per-vertex displacement across triangles; dilate mask and edge values across UV seams to avoid border artifacts.
+- [x] Rasterize neutral position map and unit normal map.
 
 #### Subphase 2.3: Dataset Normalization & Storage Contract
-- [ ] Measure corpus-wide absolute displacement 99th percentile ($p_{99}$).
-- [ ] Save `normalization_stats.json` containing measured $p_{99}$ value, sample count, and date.
-- [ ] Enforce lossless storage contract:
+- [x] Measure corpus-wide absolute displacement 99th percentile ($p_{99}$).
+- [x] Save `normalization_stats.json` containing measured $p_{99}$ value, sample count, and date.
+- [x] Enforce lossless storage contract:
   - Write: $d_{\text{norm}} = \text{clip}(d_{\text{mm}} / p_{99}, -1, 1)$, saved as 16-bit uint PNG ($[0, 65535]$) or float16 `.npy`.
   - Read: $d = (u16 / 65535.0) \times 2.0 - 1.0 \in [-1, 1]$.
   - Inference: $d_{\text{mm}} = d_{\text{model}} \times p_{99}$.
-- [ ] Unit test: Verify round-trip conversion error $< 1/65535$.
+- [x] Unit test: Verify round-trip conversion error $< 1/65535$ (`test_displacement_preprocessing.py`).
 
 #### Subphase 2.4: Subject-Stratified Split & Packaging
-- [ ] Split dataset strictly by unique **Subject ID** (not filename) to prevent smile vs. neutral data leakage.
+- [x] Split dataset strictly by unique **Subject ID** (not filename) to prevent smile vs. neutral data leakage.
+- [x] Stand up `notebooks/kaggle/phase2_5_geometry_preprocessing.ipynb` (runs on CPU session, 0 GPU quota).
 - [ ] Package preprocessed dataset into private Kaggle Dataset (`face-geo-uv-displacement-512`).
 
 **Phase 2.5 Gate:**
