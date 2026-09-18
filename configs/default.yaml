@@ -1,0 +1,43 @@
+pipeline:
+  stages: [0, 1, 2, 5]   # Active stages (3 and 4 enabled when trained)
+  input_min_photos: 3
+  input_max_photos: 5
+
+stage0:
+  detector: insightface
+  landmark_model: mediapipe
+  align_size: 224
+  min_face_confidence: 0.5
+
+stage1:
+  model: mica
+  flame_version: FLAME2020
+  beta_dims: 300
+  fusion: confidence_weighted   # InsightFace det_score softmax weighting (NOT flat average)
+
+stage2:
+  model: smirk                  # Permissively licensed expression extractor
+  expression_dims: 100
+  neutral_output: true          # Base mesh always canonical neutral (psi=0, theta=neutral)
+
+stage3:
+  resolution: 512
+  in_channels: 6                # Position (3) + Normal (3) maps rasterized from neutral mesh
+  out_channels: 1               # Scalar displacement magnitude
+  base_channels: 64
+  backbone_dim: 512
+  recon_lambda_start: 100.0
+  recon_lambda_end: 10.0
+  recon_anneal_steps: 50000
+  r1_gamma: 10.0
+  ema_decay: 0.999
+
+stage5:
+  topology: ict_facekit
+  lod_triangle_counts: [24500, 5000, 2000, 500]
+  blendshape_standard: arkit52
+  export_format: fbx
+
+evaluation:
+  arcface_threshold: 0.5
+  now_benchmark: false

@@ -1,0 +1,17 @@
+torch>=2.1.0
+torchvision
+nvdiffrast
+insightface
+onnxruntime-gpu
+mediapipe
+trimesh
+open3d
+opencv-python
+Pillow
+numpy<2.0.0
+scipy
+scikit-learn
+pyyaml
+kagglehub
+matplotlib
+tqdm
