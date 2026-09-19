@@ -1,10 +1,21 @@
-import torch
-import torch.distributed as dist
-from torch.cuda.amp import GradScaler, autocast
+from __future__ import annotations
 import copy, time, os, json
 import argparse
-from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
+
+try:
+    import torch
+    import torch.distributed as dist
+    from torch.amp import GradScaler, autocast
+    from torch.utils.data import DataLoader
+    from torch.utils.data.distributed import DistributedSampler
+except ImportError:
+    torch = None
+    dist = None
+    GradScaler = None
+    autocast = None
+    DataLoader = None
+    DistributedSampler = None
+
 from src.stage3_detail.generator import DetailGenerator
 from src.stage3_detail.discriminator import DetailDiscriminator
 from src.stage3_detail.losses import (
@@ -31,9 +42,12 @@ def get_recon_lambda(step: int, cfg: dict) -> float:
     return cfg['recon_lambda_start'] + t * (cfg['recon_lambda_end'] - cfg['recon_lambda_start'])
 
 def update_ema(ema_model: torch.nn.Module, model: torch.nn.Module, decay: float = 0.999):
+    """Updates EMA model parameters and copies all buffers."""
     with torch.no_grad():
         for p_ema, p in zip(ema_model.parameters(), model.parameters()):
             p_ema.data.mul_(decay).add_(p.data, alpha=1.0 - decay)
+        for b_ema, b in zip(ema_model.buffers(), model.buffers()):
+            b_ema.data.copy_(b.data)
 
 def main():
     parser = argparse.ArgumentParser(description="Stage 3 Detail GAN Training")
@@ -73,8 +87,8 @@ def main():
 
     opt_g = torch.optim.Adam(generator.parameters(), lr=HYPERPARAMS['lr_g'], betas=HYPERPARAMS['adam_betas'])
     opt_d = torch.optim.Adam(discriminator.parameters(), lr=HYPERPARAMS['lr_d'], betas=HYPERPARAMS['adam_betas'])
-    scaler_g = GradScaler()
-    scaler_d = GradScaler()
+    scaler_g = GradScaler('cuda', enabled=torch.cuda.is_available())
+    scaler_d = GradScaler('cuda', enabled=torch.cuda.is_available())
 
     dataset = UVDisplacementDataset(args.data_dir, is_train=True)
     sampler = DistributedSampler(dataset, shuffle=True) if is_distributed else None
@@ -98,7 +112,7 @@ def main():
 
             # ── 1. Train Discriminator ─────────────────────────────
             opt_d.zero_grad()
-            with autocast(dtype=torch.float16):
+            with autocast('cuda', dtype=torch.float16, enabled=torch.cuda.is_available()):
                 fake_disp = generator(pos_map, norm_map, per_view_feats, beta, psi).detach()
                 d_real, _, _ = discriminator(real_disp)
                 d_fake, _, _ = discriminator(fake_disp)
@@ -106,9 +120,8 @@ def main():
 
             scaler_d.scale(d_loss).backward()
 
-            # Lazy R1 gradient penalty computed strictly in FP32
+            # Lazy R1 gradient penalty computed strictly in FP32 (accumulate with d_loss gradients)
             if step % 16 == 0:
-                opt_d.zero_grad()
                 r1_loss = r1_gradient_penalty(d_raw, real_disp, gamma=HYPERPARAMS['r1_gamma'])
                 scaler_d.scale(r1_loss * 16.0).backward()
 
@@ -117,7 +130,7 @@ def main():
 
             # ── 2. Train Generator ─────────────────────────────────
             opt_g.zero_grad()
-            with autocast(dtype=torch.float16):
+            with autocast('cuda', dtype=torch.float16, enabled=torch.cuda.is_available()):
                 fake_disp = generator(pos_map, norm_map, per_view_feats, beta, psi)
                 d_fake_for_g, _, _ = discriminator(fake_disp)
 
@@ -134,10 +147,23 @@ def main():
             if rank == 0:
                 update_ema(ema_generator, g_raw, decay=HYPERPARAMS['ema_decay'])
 
+                # Log progress & diversity metrics every 100 steps
+                if step % 100 == 0 or step == 1:
+                    batch_std = fake_disp.std().item()
+                    d_acc_real = (d_real > 0).float().mean().item() * 100.0
+                    d_acc_fake = (d_fake < 0).float().mean().item() * 100.0
+                    warning_msg = " [WARN: mode collapse risk]" if batch_std < 0.01 else ""
+                    print(
+                        f"Step {step:06d}/{args.total_steps} | "
+                        f"D Loss: {d_loss.item():.4f} (R:{d_acc_real:.1f}% F:{d_acc_fake:.1f}%) | "
+                        f"G Loss: {total_g_loss.item():.4f} (Adv: {g_adv.item():.4f}, Recon: {recon_loss.item():.4f}, λ: {recon_lambda:.1f}) | "
+                        f"Disp Std: {batch_std:.4f}{warning_msg}"
+                    )
+
                 if step % HYPERPARAMS['checkpoint_every'] == 0:
                     torch.save(g_raw.state_dict(), f"{args.checkpoint_dir}/generator_step_{step:06d}.pt")
                     torch.save(ema_generator.state_dict(), f"{args.checkpoint_dir}/ema_generator.pt")
-                    print(f"Step {step:06d} | D Loss: {d_loss.item():.4f} | G Loss: {total_g_loss.item():.4f} | Recon: {recon_loss.item():.4f}")
+                    print(f"--> Saved checkpoint at step {step:06d} (generator & ema_generator)")
 
                 # Emergency checkpoint before Kaggle 12hr session kill
                 if (time.time() - start_time) / 3600 > HYPERPARAMS['max_session_hours']:

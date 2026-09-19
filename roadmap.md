@@ -79,7 +79,7 @@
 | **Phase 1** | Multi-View Inference Baseline (Stages 0, 1, 2) | 1–2 weeks | Local + Kaggle T4×2 | ✅ Completed |
 | **Phase 2** | Identity Regressor Demographic Fine-Tuning | 1–2 weeks | Kaggle T4×2 (~15h quota) | 🔄 Code Ready / Queued |
 | **Phase 2.5**| Geometry Preprocessing & UV Displacement Dataset Engine | 1 week | Kaggle CPU (0 quota) | 🔄 Code Ready / Queued |
-| **Phase 3** | Adversarial High-Frequency Detail Synthesis (Detail GAN) | 3–4 weeks | Kaggle T4×2 (~30h quota) | ⏹ Queued |
+| **Phase 3** | Adversarial High-Frequency Detail Synthesis (Detail GAN) | 3–4 weeks | Kaggle T4×2 (~30h quota) | 🔄 Code Ready / Queued |
 | **Phase 4** | Commercial Licensing & Own-Capture Asset Track | Weeks 1–10 (Parallel) | Business / Legal | ⏹ Queued |
 | **Phase 5** | Production Retopology, ARKit-52 Rigging & LODs | 4–6 weeks | Local / Kaggle CPU | ⏹ Queued |
 | **Phase 6** | Detail Hybridization & Static Facial Hair | 2–3 weeks | Kaggle T4×2 | ⏹ Queued |
@@ -234,20 +234,22 @@
 > **Objective:** Train a generator/discriminator pair to synthesize 512×512 UV displacement maps containing subject-specific micro-wrinkles and pore texture, conditioned on multi-view features and neutral coarse geometry.
 
 #### Subphase 3.1: Generator Architecture Upgrades (P1 Fixes)
-- [ ] Replace `nn.BatchNorm2d` with `nn.InstanceNorm2d(affine=True)` or `nn.GroupNorm(8)` to eliminate batch-coupling artifacts and batch-size-4 noise.
-- [ ] Fix cross-attention bottleneck: Add LayerNorm and residual connection ($q = q + \text{MultiViewAttention}(\text{LN}(q), \text{feats})$) to preserve spatial features and AdaIN conditioning.
-- [ ] Verify bilinear upsampling in decoder path (no checkerboard artifacts).
+- [x] Replace `nn.BatchNorm2d` with `nn.InstanceNorm2d(affine=True)` or `nn.GroupNorm(8)` to eliminate batch-coupling artifacts and batch-size-4 noise.
+- [x] Fix cross-attention bottleneck: Add LayerNorm and residual connection ($q = q + \text{MultiViewAttention}(\text{LN}(q), \text{feats})$) to preserve spatial features and AdaIN conditioning.
+- [x] Verify bilinear upsampling in decoder path (no checkerboard artifacts).
 
 #### Subphase 3.2: Discriminator & Loss Recipe Upgrades (P1 Fixes)
-- [ ] PatchGAN architecture with Spectral Normalization evaluating 70×70 receptive field patches.
-- [ ] Fix lazy R1 penalty accumulation: Remove `opt_d.zero_grad()` before R1 backward; accumulate R1 gradients with adversarial gradients every 16 steps.
-- [ ] Force R1 gradient calculation strictly in **FP32** (`autocast(enabled=False)`).
-- [ ] Masked L1 reconstruction loss: Restrict computation strictly to valid UV pixels ($\text{mask} = 1$).
-- [ ] Anneal reconstruction weight $\lambda_{\text{recon}}$ from 100 to 10 over 50k steps.
+- [x] PatchGAN architecture with Spectral Normalization evaluating 70×70 receptive field patches.
+- [x] Fix lazy R1 penalty accumulation: Remove `opt_d.zero_grad()` before R1 backward; accumulate R1 gradients with adversarial gradients every 16 steps.
+- [x] Force R1 gradient calculation strictly in **FP32** (`autocast(enabled=False)`).
+- [x] Masked L1 reconstruction loss: Restrict computation strictly to valid UV pixels ($\text{mask} = 1$).
+- [x] Anneal reconstruction weight $\lambda_{\text{recon}}$ from 100 to 10 over 50k steps.
 
 #### Subphase 3.3: EMA & Model Serialization (P1 Fix)
-- [ ] Fix `update_ema`: Copy model buffers (`running_mean`, `running_var`) in addition to parameter interpolation.
-- [ ] Enforce upload gate in `scripts/upload_to_kaggle_models.py`: Require `ema_generator.pt` and verified `normalization_stats.json`.
+- [x] Fix `update_ema`: Copy model buffers (`running_mean`, `running_var`) in addition to parameter interpolation.
+- [x] Enforce upload gate in `scripts/upload_to_kaggle_models.py`: Require `ema_generator.pt` and verified `normalization_stats.json`.
+- [x] Stand up `notebooks/kaggle/phase3_detail_gan_train.ipynb` for T4×2 DDP execution.
+- [x] Comprehensive test suite `tests/test_stage3_detail.py` verifying architecture, losses, EMA, and gates.
 
 #### Subphase 3.4: Pilot Run & Full Training on Kaggle T4×2
 - [ ] Pilot run: Train on 50 subjects for 5k steps to verify loss convergence, non-zero recon loss, and batch output std $> 0.01$.

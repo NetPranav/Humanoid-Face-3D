@@ -3,10 +3,10 @@
 This directory contains executable Jupyter Notebook templates specifically tailored for Kaggle GPU (T4×2) and CPU environments.
 
 ## Directory Structure
-- `phase1_inference_baseline.ipynb`: (Coming in Phase 1) End-to-end multi-view inference on T4.
-- `phase2_identity_finetune.ipynb`: (Coming in Phase 2) MICA fine-tuning notebook.
-- `phase2_5_geometry_preprocessing.ipynb`: (Coming in Phase 2.5) FaceScape scan UV rasterization (runs on CPU - 0 GPU quota).
-- `phase3_detail_gan_train.ipynb`: (Coming in Phase 3) 50k-step Adversarial Detail synthesis.
+- `phase1_inference_baseline.ipynb`: End-to-end multi-view inference on T4 with identity threshold gate.
+- `phase2_identity_finetune.ipynb`: MICA fine-tuning notebook on 2×T4 with DDP and vertex L1 loss.
+- `phase2_5_geometry_preprocessing.ipynb`: FaceScape scan UV rasterization engine (runs on CPU - 0 GPU quota).
+- `phase3_detail_gan_train.ipynb`: 50k-step Adversarial Detail synthesis on 2×T4 with DDP, InstanceNorm, and EMA.
 
 ## Kaggle Environment Rules
 Before running any notebook, consult [DOCS/kaggle_environment.md](../../DOCS/kaggle_environment.md):

@@ -1,6 +1,17 @@
-import torch
-import torch.nn as nn
-from torch.nn.utils import spectral_norm
+from __future__ import annotations
+try:
+    import torch
+    import torch.nn as nn
+    from torch.nn.utils import spectral_norm
+except ImportError:
+    torch = None
+    class _MockModule:
+        pass
+    class _MockNN:
+        Module = _MockModule
+    nn = _MockNN()
+    def spectral_norm(module, *args, **kwargs):
+        return module
 from typing import Tuple, Optional
 
 class DetailDiscriminator(nn.Module):

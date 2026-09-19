@@ -1,5 +1,10 @@
-import torch
-import torch.nn.functional as F
+from __future__ import annotations
+try:
+    import torch
+    import torch.nn.functional as F
+except ImportError:
+    torch = None
+    F = None
 
 def adversarial_loss_g(d_fake: torch.Tensor) -> torch.Tensor:
     """Non-saturating generator loss."""
@@ -16,7 +21,9 @@ def r1_gradient_penalty(discriminator: torch.nn.Module, real_samples: torch.Tens
     """
     real_samples = real_samples.detach().requires_grad_(True)
 
-    with torch.cuda.amp.autocast(enabled=False):
+    # Modern torch.amp.autocast syntax
+    device_type = 'cuda' if real_samples.is_cuda else 'cpu'
+    with torch.amp.autocast(device_type, enabled=False):
         d_real, _, _ = discriminator(real_samples.float())
         gradients = torch.autograd.grad(
             outputs=d_real.sum(),

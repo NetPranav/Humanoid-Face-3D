@@ -15,8 +15,6 @@ def upload_checkpoint(
     version_notes: str,
     stage: int,
 ):
-    import kagglehub
-
     checkpoint_dir = Path(checkpoint_dir)
     assert checkpoint_dir.exists(), f"Checkpoint directory does not exist: {checkpoint_dir}"
 
@@ -36,6 +34,11 @@ def upload_checkpoint(
                 f"\n[Validation Blocked] normalization_stats.json not found at: {norm_stats}\n"
                 "This file specifies the p99 metric required for denormalizing displacement maps back to millimeters."
             )
+
+    try:
+        import kagglehub
+    except ImportError:
+        raise ImportError("kagglehub is required for uploading to Kaggle Models. Run: pip install kagglehub")
 
     print(f"Uploading artifacts from {checkpoint_dir} to Kaggle Models: {handle}")
     print(f"Version notes: {version_notes}")

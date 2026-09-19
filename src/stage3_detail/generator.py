@@ -1,6 +1,16 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from __future__ import annotations
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+except ImportError:
+    torch = None
+    class _MockModule:
+        pass
+    class _MockNN:
+        Module = _MockModule
+    nn = _MockNN()
+    F = None
 
 class MultiViewAttention(nn.Module):
     """
@@ -49,6 +59,7 @@ class DetailGenerator(nn.Module):
 
         # Cross-attention bottleneck
         bottleneck_c = bc * 8
+        self.attn_norm = nn.LayerNorm(bottleneck_c)
         self.mv_attn = MultiViewAttention(bottleneck_c)
 
         # AdaIN identity and expression conditioning projection
@@ -66,7 +77,7 @@ class DetailGenerator(nn.Module):
     def _conv_block(self, in_c: int, out_c: int) -> nn.Sequential:
         return nn.Sequential(
             nn.Conv2d(in_c, out_c, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_c),
+            nn.InstanceNorm2d(out_c, affine=True),
             nn.LeakyReLU(0.2, inplace=True),
         )
 
@@ -109,10 +120,12 @@ class DetailGenerator(nn.Module):
         # Modulate with style vector
         bottleneck = self.adain(bottleneck, style)
 
-        # Cross-attention across views
+        # Cross-attention across views with LayerNorm and residual connection
         B, C, H, W = bottleneck.shape
         q = bottleneck.reshape(B, C, H * W).permute(0, 2, 1)
-        q = self.mv_attn(q, per_view_feats)
+        q_norm = self.attn_norm(q)
+        attn_out = self.mv_attn(q_norm, per_view_feats)
+        q = q + attn_out  # Residual connection preserves spatial + style features
         bottleneck = q.permute(0, 2, 1).reshape(B, C, H, W)
 
         def up(t): return F.interpolate(t, scale_factor=2, mode='bilinear', align_corners=False)
