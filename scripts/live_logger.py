@@ -39,24 +39,40 @@ def get_latest_upload_progress() -> str:
     return "Task active, awaiting chunk progress..."
 
 
+def check_active_kernel() -> str:
+    """Queries Kaggle CLI for running kernel status."""
+    try:
+        env = os.environ.copy()
+        env['KAGGLE_API_TOKEN'] = 'KGAT_2ef9ab9c57c5ca109e7af862a81c6b21'
+        res = subprocess.run(
+            ['kaggle', 'kernels', 'status', 'nightshowdown/phase-2-5-geometry-preprocessing-1024'],
+            capture_output=True, text=True, env=env, timeout=15
+        )
+        if res.returncode == 0:
+            return res.stdout.strip()
+        return res.stderr.strip()
+    except Exception as e:
+        return str(e)
+
+
 def update_log_file():
     """Reads execution_log.md and updates the active status section."""
     if not EXECUTION_LOG.exists():
         return
 
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    progress = get_latest_upload_progress()
+    kernel_status = check_active_kernel()
 
     content = EXECUTION_LOG.read_text()
     
-    # Append progress line if not already the last event
-    new_event = f"`[{timestamp}]` 📡 Upload Sync: {progress}\n"
+    # Append kernel status update if status changed or every few minutes
+    new_event = f"`[{timestamp}]` ☁️ Kaggle Cloud Status: {kernel_status}\n"
     
-    # Only append if content changed
-    if progress not in content:
+    if kernel_status and (kernel_status not in content or "RUNNING" in kernel_status):
         with open(EXECUTION_LOG, "a") as f:
             f.write(new_event)
 
 
 if __name__ == '__main__':
     update_log_file()
+

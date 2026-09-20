@@ -8,6 +8,7 @@ Runs entirely on CPU sessions (0 GPU quota consumed).
 Enforces lossless 16-bit uint PNG displacement encoding calibrated by corpus p99 metric.
 """
 import os
+import sys
 import json
 import argparse
 import numpy as np
@@ -15,6 +16,11 @@ import cv2
 from pathlib import Path
 from typing import Tuple, Dict, Optional, List, Any
 from tqdm import tqdm
+
+# Ensure repository root is on sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.utils.flame_model import FLAMEModel, N_VERTS
 
@@ -111,6 +117,7 @@ def rasterize_uv_maps(
     hit_mask: np.ndarray,
     uv_coords: np.ndarray,
     uv_faces: np.ndarray,
+    flame_faces: Optional[np.ndarray] = None,
     resolution: int = 1024
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -129,10 +136,10 @@ def rasterize_uv_maps(
     uv_px[:, 1] = np.clip((1.0 - uv_px[:, 1]) * (resolution - 1), 0, resolution - 1)
 
     # Rasterize each triangle
-    for tri_uv in uv_faces:
+    for i, tri_uv in enumerate(uv_faces):
         p0, p1, p2 = uv_px[tri_uv[0]], uv_px[tri_uv[1]], uv_px[tri_uv[2]]
-        # Check if vertices are valid
-        v_idx = tri_uv[:3]
+        # 3D mesh vertex indices for this face
+        v_idx = flame_faces[i] if flame_faces is not None else tri_uv[:3]
         if not np.all(hit_mask[v_idx]):
             continue
 
@@ -306,6 +313,7 @@ def process_scan_corpus(
             hit_mask=hit_mask,
             uv_coords=uv_coords,
             uv_faces=uv_faces,
+            flame_faces=flame.faces,
             resolution=resolution
         )
         disp_u16 = encode_displacement_16bit(disp_map, empirical_p99)

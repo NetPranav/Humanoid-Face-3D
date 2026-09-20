@@ -33,18 +33,18 @@ KERNEL_CONFIGS = {
         "datasets": [],
     },
     "phase2_5": {
-        "slug": "phase2-5-geometry-preprocessing",
+        "slug": "phase-2-5-geometry-preprocessing-1024",
         "title": "Phase 2.5: Geometry Preprocessing 1024",
         "notebook": "phase2_5_geometry_preprocessing.ipynb",
         "enable_gpu": False,  # 0 GPU quota consumed
-        "datasets": [],
+        "datasets": ["nightshowdown/flame-model"],
     },
     "phase2": {
         "slug": "phase2-identity-finetune",
         "title": "Phase 2: MICA Identity Regressor Fine-Tune",
         "notebook": "phase2_identity_finetune.ipynb",
         "enable_gpu": True,  # 2xT4
-        "datasets": [],
+        "datasets": ["nightshowdown/flame-model", "nightshowdown/mica-pretrained"],
     },
     "phase3": {
         "slug": "phase3-detail-gan-train",
