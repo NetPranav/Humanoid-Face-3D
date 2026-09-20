@@ -16,10 +16,10 @@
 ## 2. Master Phase Status
 * **Phase 0:** ✅ Foundation, P0 Bug Fixes & Honest Failure Verification (Completed)
 * **Phase 1:** ✅ Multi-View Inference Baseline (Completed)
-* **Phase 2:** 🔄 Identity Regressor Demographic Fine-Tuning (Code Ready & Queued for Kaggle)
-* **Phase 2.5:** 🔄 Geometry Preprocessing & 1024² UV Displacement Engine (Code Ready for Kaggle CPU)
-* **Phase 3:** 🔄 Adversarial High-Frequency Detail Synthesis (1024² Detail GAN Code Ready)
-* **Phase 4:** ✅ Legal Protocol, Release Form, & Capture Ingestion (Completed)
+* **Phase 2:** ⏹ Identity Fine-Tuning (Code Ready, Blocked on Ground-Truth FLAME $\beta$ Supervision Dataset)
+* **Phase 2.5:** ✅ Geometry Preprocessing & 1024² UV Displacement Engine (Job 01 Completed & Verified on Kaggle)
+* **Phase 3:** 🔄 Adversarial High-Frequency Detail Synthesis (Detail GAN Code Ready; Consumes Phase 2.5 UV Maps)
+* **Phase 4:** 🔄 Commercial Licensing & Own-Capture (Code/Protocol Built; Physical Captures & External Licenses Pending)
 * **Phase 5:** ✅ Production Retopology, ARKit-52 Rigging, 4 LODs, & UE5 Live Link FBX (Completed)
 * **Test Suite:** 76 unit tests discovered and passing (`python3 -m unittest discover tests`).
 * **Pre-Flight Blockers Resolved (Commit `254899b`):**
