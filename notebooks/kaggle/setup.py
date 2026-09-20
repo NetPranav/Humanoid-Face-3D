@@ -86,7 +86,10 @@ def check_gpu():
         print("[Setup] Warning: PyTorch is not yet imported.")
 
 
-def sync_repository(repo_url: str = None, repo_name: str = "3d_model") -> Path:
+def sync_repository(
+    repo_url: str = "https://github.com/NetPranav/Humanoid-Face-3D.git",
+    repo_name: str = "Humanoid-Face-3D"
+) -> Path:
     """
     Clones or pulls latest code into /kaggle/working/.
     """
@@ -113,7 +116,10 @@ def sync_repository(repo_url: str = None, repo_name: str = "3d_model") -> Path:
     return repo_path
 
 
-def setup_environment(repo_url: str = None, repo_name: str = "3d_model") -> Path:
+def setup_environment(
+    repo_url: str = "https://github.com/NetPranav/Humanoid-Face-3D.git",
+    repo_name: str = "Humanoid-Face-3D"
+) -> Path:
     """
     Unified entrypoint for Kaggle notebook Cell 1.
     """
