@@ -30,13 +30,27 @@ class UVDisplacementDataset(Dataset):
         subjects = sorted({p.stem.split('_')[0] for p in self.disp_files})
         rng = random.Random(1337)
         rng.shuffle(subjects)
-        val_count = max(1, int(len(subjects) * 0.1))
-        val_subjects = set(subjects[:val_count])
+        if len(subjects) <= 1:
+            # If only 1 subject exists (e.g. pilot/testing), use for train or allow overfit validation
+            val_subjects = set() if is_train else set(subjects)
+        else:
+            val_count = max(1, int(len(subjects) * 0.1))
+            val_subjects = set(subjects[:val_count])
 
         self.files = [
             p for p in self.disp_files
             if (p.stem.split('_')[0] in val_subjects) != is_train
         ]
+
+        if len(self.files) == 0:
+            if is_train:
+                raise RuntimeError(
+                    f"Zero training samples available in {data_dir}. "
+                    f"Total subjects found: {len(subjects)}. At least 2 subjects required for strict train/val split."
+                )
+            else:
+                # In pilot/single-subject mode, fallback to using train sample for validation evaluation
+                self.files = self.disp_files
 
     def __len__(self) -> int:
         return len(self.files)
