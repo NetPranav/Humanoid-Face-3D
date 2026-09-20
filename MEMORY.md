@@ -21,7 +21,12 @@
 * **Phase 3:** 🔄 Adversarial High-Frequency Detail Synthesis (1024² Detail GAN Code Ready)
 * **Phase 4:** ✅ Legal Protocol, Release Form, & Capture Ingestion (Completed)
 * **Phase 5:** ✅ Production Retopology, ARKit-52 Rigging, 4 LODs, & UE5 Live Link FBX (Completed)
-* **Test Suite:** 73 unit tests discovered and passing (`python3 -m unittest discover tests`).
+* **Test Suite:** 76 unit tests discovered and passing (`python3 -m unittest discover tests`).
+* **Pre-Flight Blockers Resolved (Commit `254899b`):**
+  - Added `scripts/extract_arcface_features.py` for pre-extracting 512-D ArcFace embeddings and 112×112 crops for Stage 1 fine-tuning.
+  - Added safe `per_view_feats` dictionary lookup and `(1, 512)` zero-fallback in `src/stage3_detail/data.py` to prevent `KeyError`.
+  - Set default `id_lambda = 0.0` with CLI argument in `src/stage3_detail/trainer.py` to prevent passing 2D scalar displacement maps directly to ArcFace.
+  - Added multi-path resolution in `src/pipeline.py` checking both `pretrained.tar` and `mica.tar`.
 
 ---
 
@@ -39,9 +44,15 @@
 
 ---
 
-## 4. Immediate Next Steps
-1. Configure Kaggle credentials in `~/.kaggle/kaggle.json`.
-2. Push and monitor Phase 2.5 (FaceScape UV rasterization on Kaggle CPU).
-3. Push and monitor Phase 2 (MICA fine-tuning on Kaggle 2×T4).
-4. Push and monitor Phase 3 (1024² Detail GAN training on Kaggle 2×T4).
-5. Download trained weights and run local inference with game-ready FBX generation.
+## 4. Current Execution Plan
+1. **User Kaggle Datasets Upload:**
+   - `flame-model`: Private Kaggle dataset containing `generic_model.pkl` + `head_template.obj` (from https://flame.is.tue.mpg.de).
+   - `mica-pretrained`: Private Kaggle dataset containing `pretrained.tar` (from https://github.com/Zielon/MICA/releases).
+2. **Job 01 (Phase 2.5 Geometry Preprocessing):**
+   - Push `notebooks/kaggle/phase2_5_geometry_preprocessing.ipynb` to Kaggle (CPU session, 0 GPU quota consumed).
+3. **Job 02 (Phase 2 MICA Fine-Tuning):**
+   - Run feature extraction via `scripts/extract_arcface_features.py` to produce paired `.npz` files.
+   - Run `notebooks/kaggle/phase2_identity_finetune.ipynb` on Kaggle 2×T4.
+4. **Job 03 (Phase 3 1024² Detail GAN Training):**
+   - Run `notebooks/kaggle/phase3_detail_gan_train.ipynb` on Kaggle 2×T4.
+
