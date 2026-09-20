@@ -42,6 +42,7 @@ class FaceGeoPipeline:
 
     def _get_stage1(self):
         if self._stage1 is None:
+            from src.stage1_identity.inference import MICAIdentityEncoder
             mica_candidates = [
                 self.model_dir / 'mica/pretrained.tar',
                 self.model_dir / 'mica/mica.tar',
