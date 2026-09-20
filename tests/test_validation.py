@@ -159,5 +159,28 @@ class TestValidation(unittest.TestCase):
         self.assertEqual(len(res.errors), 0)
         self.assertEqual(len(res.detections), 3)
 
+    def test_face_detector_pose_yaw_extraction(self):
+        """Verify FaceDetector correctly extracts yaw from face.pose without crashing on undefined yaw."""
+        class MockFace:
+            bbox = np.array([10, 10, 100, 100])
+            kps = np.zeros((5, 2))
+            det_score = 0.99
+            pose = np.array([5.0, 32.5, -2.0])  # [pitch, yaw, roll]
+            normed_embedding = np.ones(512, dtype=np.float32)
+
+        class MockApp:
+            def get(self, img):
+                return [MockFace()]
+
+        detector = FaceDetector.__new__(FaceDetector)
+        detector.has_insightface = True
+        detector.app = MockApp()
+
+        dummy_img = np.zeros((200, 200, 3), dtype=np.uint8)
+        dets = detector.detect(dummy_img)
+
+        self.assertEqual(len(dets), 1)
+        self.assertAlmostEqual(dets[0].yaw_deg, 32.5, places=2)
+
 if __name__ == "__main__":
     unittest.main()

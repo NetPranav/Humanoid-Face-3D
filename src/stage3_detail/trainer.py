@@ -21,6 +21,7 @@ from src.stage3_detail.discriminator import DetailDiscriminator
 from src.stage3_detail.losses import (
     adversarial_loss_g, adversarial_loss_d,
     r1_gradient_penalty, reconstruction_loss_masked,
+    identity_preservation_loss,
 )
 from src.stage3_detail.data import UVDisplacementDataset
 
@@ -32,6 +33,7 @@ HYPERPARAMS = {
     'recon_lambda_end': 10.0,
     'recon_anneal_steps': 50000,
     'r1_gamma': 10.0,
+    'id_lambda': 5.0,
     'ema_decay': 0.999,
     'checkpoint_every': 500,
     'max_session_hours': 11.5,
@@ -53,8 +55,9 @@ def main():
     parser = argparse.ArgumentParser(description="Stage 3 Detail GAN Training")
     parser.add_argument('--data_dir', type=str, required=True, help="Path to preprocessed UV displacement dataset")
     parser.add_argument('--checkpoint_dir', type=str, default='/kaggle/working/checkpoints')
+    parser.add_argument('--arcface_checkpoint', type=str, default=None, help="Path to pretrained ArcFace weights")
     parser.add_argument('--total_steps', type=int, default=50000)
-    parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('--batch_size', type=int, default=12)
     args = parser.parse_args()
 
     # Multi-GPU DDP setup
@@ -75,6 +78,30 @@ def main():
     generator = DetailGenerator().to(device)
     discriminator = DetailDiscriminator().to(device)
     ema_generator = copy.deepcopy(generator).eval()
+
+    # Optional frozen ArcFace identity preservation model
+    arcface_model = None
+    if args.arcface_checkpoint and os.path.exists(args.arcface_checkpoint):
+        try:
+            import sys
+            from pathlib import Path
+            mica_dir = Path(__file__).resolve().parents[2] / 'vendor' / 'MICA'
+            if str(mica_dir) not in sys.path:
+                sys.path.insert(0, str(mica_dir))
+            from models.arcface import Arcface
+            arcface_model = Arcface().to(device)
+            ckpt = torch.load(args.arcface_checkpoint, map_location=device)
+            state_dict = ckpt['arcface'] if isinstance(ckpt, dict) and 'arcface' in ckpt else ckpt
+            arcface_model.load_state_dict(state_dict)
+            arcface_model.eval()
+            for p in arcface_model.parameters():
+                p.requires_grad = False
+            if rank == 0:
+                print(f"[Stage 3] Initialized frozen ArcFace identity preservation model from {args.arcface_checkpoint}")
+        except Exception as e:
+            if rank == 0:
+                print(f"[Stage 3] Note: Could not load ArcFace model from {args.arcface_checkpoint}: {e}")
+            arcface_model = None
 
     if is_distributed:
         generator = torch.nn.parallel.DistributedDataParallel(generator, device_ids=[local_rank])
@@ -139,6 +166,13 @@ def main():
                 recon_loss = reconstruction_loss_masked(fake_disp, real_disp, mask)
                 total_g_loss = g_adv + recon_lambda * recon_loss
 
+                id_loss_val = 0.0
+                if arcface_model is not None and 'crop' in batch:
+                    target_photo = batch['crop'].to(device)
+                    id_loss = identity_preservation_loss(fake_disp, target_photo, arcface_model)
+                    total_g_loss = total_g_loss + HYPERPARAMS['id_lambda'] * id_loss
+                    id_loss_val = float(id_loss.item())
+
             scaler_g.scale(total_g_loss).backward()
             scaler_g.step(opt_g)
             scaler_g.update()
@@ -153,10 +187,11 @@ def main():
                     d_acc_real = (d_real > 0).float().mean().item() * 100.0
                     d_acc_fake = (d_fake < 0).float().mean().item() * 100.0
                     warning_msg = " [WARN: mode collapse risk]" if batch_std < 0.01 else ""
+                    id_msg = f", Id: {id_loss_val:.4f}" if id_loss_val > 0 else ""
                     print(
                         f"Step {step:06d}/{args.total_steps} | "
                         f"D Loss: {d_loss.item():.4f} (R:{d_acc_real:.1f}% F:{d_acc_fake:.1f}%) | "
-                        f"G Loss: {total_g_loss.item():.4f} (Adv: {g_adv.item():.4f}, Recon: {recon_loss.item():.4f}, λ: {recon_lambda:.1f}) | "
+                        f"G Loss: {total_g_loss.item():.4f} (Adv: {g_adv.item():.4f}, Recon: {recon_loss.item():.4f}{id_msg}, λ: {recon_lambda:.1f}) | "
                         f"Disp Std: {batch_std:.4f}{warning_msg}"
                     )
 

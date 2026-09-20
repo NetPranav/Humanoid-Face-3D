@@ -1,8 +1,11 @@
 import os
 import sys
+import logging
 import numpy as np
 from pathlib import Path
 from typing import List, Optional, Union
+
+logger = logging.getLogger("Stage1Identity")
 
 try:
     import torch
@@ -238,22 +241,29 @@ class MICAIdentityEncoder:
 
         # 2. Embedding space fusion (MICA standard, recommended)
         if space == 'embedding':
-            fused_emb = np.zeros(512, dtype=np.float32)
-            for w, det in zip(weights, valid_dets):
-                emb = self.extract_embedding(det)
-                fused_emb += w * emb
+            try:
+                fused_emb = np.zeros(512, dtype=np.float32)
+                for w, det in zip(weights, valid_dets):
+                    emb = self.extract_embedding(det)
+                    fused_emb += w * emb
 
-            # Re-normalize to unit hypersphere
-            fused_emb_norm = fused_emb / (np.linalg.norm(fused_emb) + 1e-8)
-            return self.regress_beta(fused_emb_norm)
+                # Re-normalize to unit hypersphere
+                fused_emb_norm = fused_emb / (np.linalg.norm(fused_emb) + 1e-8)
+                return self.regress_beta(fused_emb_norm)
+            except Exception as e:
+                logger.warning(
+                    f"[Stage 1] Embedding-space fusion failed: {e}. "
+                    "Falling back to beta-space fusion (averaging regressed shape parameters across views)."
+                )
 
         # 3. Beta space fusion (fallback)
-        elif space == 'beta':
-            betas = [self.encode_single(det) for det in valid_dets]
-            fused_beta = np.zeros(300, dtype=np.float32)
-            for w, b in zip(weights, betas):
-                fused_beta += w * b
-            return fused_beta
-
-        else:
-            raise ValueError(f"Unknown fusion_space '{space}'. Expected 'embedding' or 'beta'.")
+        logger.warning(
+            "[Stage 1] Multi-view fusion is operating in beta-space. "
+            "Beta-space fusion regresses shape per view independently and averages betas, "
+            "which is inferior to embedding-space fusion on the ArcFace hypersphere."
+        )
+        betas = [self.encode_single(det) for det in valid_dets]
+        fused_beta = np.zeros(300, dtype=np.float32)
+        for w, b in zip(weights, betas):
+            fused_beta += w * b
+        return fused_beta

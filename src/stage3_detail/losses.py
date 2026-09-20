@@ -45,13 +45,30 @@ def reconstruction_loss_masked(pred: torch.Tensor, target: torch.Tensor, mask: t
     diff = (pred - target).abs() * mask
     return diff.sum() / (mask.sum() + 1e-8)
 
-def identity_preservation_loss(mesh_render: torch.Tensor, input_photo_crop: torch.Tensor, arcface_model: torch.nn.Module) -> torch.Tensor:
-    """Cosine distance between rendered reconstructed face and input portrait."""
-    with torch.no_grad():
-        target_emb = arcface_model(input_photo_crop)
+from typing import Optional
 
-    pred_emb = arcface_model(mesh_render)
-    target_emb = F.normalize(target_emb, dim=-1)
-    pred_emb = F.normalize(pred_emb, dim=-1)
+def identity_preservation_loss(
+    mesh_render: torch.Tensor,
+    input_photo_crop: torch.Tensor,
+    arcface_model: Optional[torch.nn.Module] = None
+) -> torch.Tensor:
+    """
+    Cosine distance between rendered reconstructed face and input portrait.
+    Also accepts direct feature/embedding tensors if pre-extracted.
+    """
+    if arcface_model is not None:
+        with torch.no_grad():
+            target_emb = arcface_model(input_photo_crop)
+        pred_emb = arcface_model(mesh_render)
+    else:
+        pred_emb = mesh_render
+        target_emb = input_photo_crop
+
+    target_emb = F.normalize(target_emb.float(), dim=-1)
+    pred_emb = F.normalize(pred_emb.float(), dim=-1)
 
     return 1.0 - (target_emb * pred_emb).sum(dim=-1).mean()
+
+def photometric_consistency_loss(shaded_render: torch.Tensor, shaded_target: torch.Tensor) -> torch.Tensor:
+    """Penalizes directional illumination shading discrepancies to prevent surface inversion."""
+    return F.l1_loss(shaded_render, shaded_target)

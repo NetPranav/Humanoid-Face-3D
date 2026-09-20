@@ -62,6 +62,10 @@ class FaceDetector:
             elif hasattr(face, 'embedding') and face.embedding is not None:
                 emb = face.embedding / (np.linalg.norm(face.embedding) + 1e-12)
 
+            # InsightFace buffalo_l populates pose as [pitch, yaw, roll]
+            pose = getattr(face, 'pose', None)
+            yaw = float(pose[1]) if pose is not None and len(pose) >= 2 else 0.0
+
             det = FaceDetection(
                 bbox=face.bbox,
                 landmarks_5pt=face.kps,

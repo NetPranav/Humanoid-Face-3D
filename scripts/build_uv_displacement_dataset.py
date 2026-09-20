@@ -205,11 +205,67 @@ def rasterize_uv_maps(
     return disp_map, pos_map, norm_map, mask_map
 
 
+def load_flame_uv_layout(template_path_or_npz: Optional[str] = None) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Loads UV coordinates and UV face indices from FLAME head_template.obj or FLAME_texture.npz.
+    """
+    candidates = []
+    if template_path_or_npz:
+        candidates.append(Path(template_path_or_npz))
+    candidates.extend([
+        Path('data/flame_model/head_template.obj'),
+        Path('data/flame_model/FLAME_texture.npz'),
+        Path('/kaggle/input/flame-model/head_template.obj'),
+        Path('/kaggle/input/flame-model/FLAME_texture.npz'),
+    ])
+
+    resolved_path = None
+    for cand in candidates:
+        if cand.exists():
+            resolved_path = cand
+            break
+
+    if resolved_path is None:
+        print("[Warning] FLAME UV template not found. Using synthetic UV coordinates for testing.")
+        # Fallback UV layout for offline testing
+        uv_coords = np.zeros((5023, 2), dtype=np.float32)
+        uv_faces = np.zeros((9976, 3), dtype=np.int32)
+        return uv_coords, uv_faces
+
+    if resolved_path.suffix == '.npz':
+        data = np.load(resolved_path)
+        vt = data.get('vt', data.get('uv_coords'))
+        ft = data.get('ft', data.get('uv_faces'))
+        return vt.astype(np.float32), ft.astype(np.int32)
+    elif resolved_path.suffix == '.obj':
+        vt_list = []
+        ft_list = []
+        with open(resolved_path, 'r') as f:
+            for line in f:
+                if line.startswith('vt '):
+                    parts = line.strip().split()
+                    vt_list.append([float(parts[1]), float(parts[2])])
+                elif line.startswith('f '):
+                    parts = line.strip().split()[1:4]
+                    face_uvs = []
+                    for pt in parts:
+                        vals = pt.split('/')
+                        if len(vals) > 1 and vals[1]:
+                            face_uvs.append(int(vals[1]) - 1)
+                        else:
+                            face_uvs.append(int(vals[0]) - 1)
+                    ft_list.append(face_uvs)
+        return np.array(vt_list, dtype=np.float32), np.array(ft_list, dtype=np.int32)
+    else:
+        raise ValueError(f"Unsupported UV file format: {resolved_path}")
+
+
 def process_scan_corpus(
     scan_files: List[Tuple[str, str]],
     flame_model_path: str,
     output_dir: str,
-    resolution: int = 512
+    resolution: int = 512,
+    uv_template_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Processes all paired scans in corpus, computes empirical p99, and writes 16-bit PNG dataset.
@@ -217,13 +273,14 @@ def process_scan_corpus(
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     flame = FLAMEModel(flame_model_path, scale_to_mm=False)
+    uv_coords, uv_faces = load_flame_uv_layout(uv_template_path)
 
     all_displacements = []
     processed_records = []
 
     print(f"[Preprocessing] Processing {len(scan_files)} scans into UV displacement maps...")
     for subj_id, scan_path in tqdm(scan_files):
-        # 1. Compute ray-cast displacement against FLAME neutral template
+        # 1. Compute ray-cast displacement against FLAME neutral template (in mm)
         v_neutral = flame.v_template
         normals = flame.vertex_normals(v_neutral)
 
@@ -231,7 +288,7 @@ def process_scan_corpus(
         all_displacements.append(disp_mm[hit_mask])
         processed_records.append((subj_id, scan_path, disp_mm, hit_mask, v_neutral, normals))
 
-    # 2. Compute empirical corpus-wide p99
+    # 2. Compute empirical corpus-wide p99 in millimetres
     if all_displacements:
         flat_disp = np.concatenate(all_displacements)
         empirical_p99 = float(np.percentile(np.abs(flat_disp), 99.0))
@@ -240,14 +297,28 @@ def process_scan_corpus(
 
     print(f"[Normalization] Measured Empirical Displacement p99: {empirical_p99:.4f} mm")
 
-    # 3. Write out paired 16-bit PNG dataset
+    # 3. Rasterize and write out paired 512x512 dataset: disp, pos, norm, mask
     for subj_id, scan_path, disp_mm, hit_mask, v_neutral, normals in processed_records:
-        disp_u16 = encode_displacement_16bit(disp_mm, empirical_p99)
+        disp_map, pos_map, norm_map, mask_map = rasterize_uv_maps(
+            flame_verts_m=v_neutral,
+            flame_normals=normals,
+            disp_mm=disp_mm,
+            hit_mask=hit_mask,
+            uv_coords=uv_coords,
+            uv_faces=uv_faces,
+            resolution=resolution
+        )
+        disp_u16 = encode_displacement_16bit(disp_map, empirical_p99)
         base_stem = f"{subj_id}_neutral"
 
         # Save 16-bit uint PNG
         cv2.imwrite(str(out_dir / f"{base_stem}_disp.png"), disp_u16)
-        # Save float array for reference
+        # Save position, normal, mask maps for Stage 3 Detail GAN
+        cv2.imwrite(str(out_dir / f"{base_stem}_pos.png"), (np.clip(pos_map, 0, 1) * 255).astype(np.uint8))
+        cv2.imwrite(str(out_dir / f"{base_stem}_norm.png"), (norm_map * 255).astype(np.uint8))
+        cv2.imwrite(str(out_dir / f"{base_stem}_mask.png"), mask_map)
+
+        # Save raw float arrays for exact metric evaluation
         np.savez_compressed(
             str(out_dir / f"{base_stem}_maps.npz"),
             disp_mm=disp_mm.astype(np.float16),

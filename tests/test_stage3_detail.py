@@ -15,6 +15,7 @@ from src.stage3_detail.trainer import get_recon_lambda, update_ema, HYPERPARAMS
 from src.stage3_detail.losses import (
     adversarial_loss_g, adversarial_loss_d,
     reconstruction_loss_masked, r1_gradient_penalty,
+    identity_preservation_loss, photometric_consistency_loss,
 )
 from src.stage3_detail.data import UVDisplacementDataset
 from scripts.upload_to_kaggle_models import upload_checkpoint
@@ -237,6 +238,36 @@ class TestStage3DetailGAN(unittest.TestCase):
         self.assertAlmostEqual(ema_model.weight.item(), 1.0, places=4)
         # Expected buffer: exactly copied -> 5
         self.assertEqual(ema_model.running_count.item(), 5)
+
+    def test_hyperparams_structure(self):
+        """Verify HYPERPARAMS contains required Stage 3 GAN training settings."""
+        self.assertIn('id_lambda', HYPERPARAMS)
+        self.assertGreater(HYPERPARAMS['id_lambda'], 0.0)
+        self.assertIn('recon_lambda_start', HYPERPARAMS)
+        self.assertIn('r1_gamma', HYPERPARAMS)
+        self.assertIn('ema_decay', HYPERPARAMS)
+
+    @unittest.skipIf(torch is None, "PyTorch required for loss tests")
+    def test_identity_preservation_loss_computation(self):
+        """Verify identity_preservation_loss computes cosine distance correctly."""
+        # Identical vectors: distance should be 0.0
+        emb1 = torch.tensor([[1.0, 0.0, 0.0]])
+        emb2 = torch.tensor([[1.0, 0.0, 0.0]])
+        loss_identical = identity_preservation_loss(emb1, emb2)
+        self.assertAlmostEqual(loss_identical.item(), 0.0, places=5)
+
+        # Orthogonal vectors: distance should be 1.0
+        emb_ortho = torch.tensor([[0.0, 1.0, 0.0]])
+        loss_ortho = identity_preservation_loss(emb1, emb_ortho)
+        self.assertAlmostEqual(loss_ortho.item(), 1.0, places=5)
+
+    @unittest.skipIf(torch is None, "PyTorch required for loss tests")
+    def test_photometric_consistency_loss_computation(self):
+        """Verify photometric_consistency_loss computes L1 difference."""
+        img1 = torch.zeros((1, 3, 32, 32))
+        img2 = torch.ones((1, 3, 32, 32))
+        loss = photometric_consistency_loss(img1, img2)
+        self.assertAlmostEqual(loss.item(), 1.0, places=5)
 
 
 if __name__ == '__main__':

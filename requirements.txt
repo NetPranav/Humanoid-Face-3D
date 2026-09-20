@@ -11,8 +11,7 @@ trimesh
 scipy
 scikit-learn
 
-# FLAME Kinematics & Skinning
-chumpy
+# FLAME Kinematics & Skinning (Pure NumPy Rodrigues & LBS; chumpy unpickler handled via _FlameUnpickler)
 
 # Image Processing & Utilities
 opencv-python
