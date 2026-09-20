@@ -71,7 +71,7 @@ class FaceGeoPipeline:
             smirk_ckpt = self.model_dir / 'smirk/pretrained.tar'
             if not smirk_ckpt.exists():
                 smirk_ckpt = Path('/kaggle/input/smirk-pretrained/smirk.tar')
-            self._stage2 = ExpressionEncoder(str(smirk_ckpt))
+            self._stage2 = ExpressionEncoder(str(smirk_ckpt), allow_neutral=True)
         return self._stage2
 
     def run(self, photo_paths: List[str], output_dir: str) -> Dict[str, Any]:
