@@ -22,8 +22,9 @@ class FaceGeoPipeline:
 
         self.model_dir = Path(model_dir)
         flame_path = self.model_dir / 'flame/generic_model.pkl'
-        if not flame_path.exists():
-            # Fallback path inside data/flame_model
+        if not flame_path.exists() and (self.model_dir / 'generic_model.pkl').exists():
+            flame_path = self.model_dir / 'generic_model.pkl'
+        elif not flame_path.exists() and str(model_dir) in ('models', 'models_cache', 'models/'):
             flame_path = Path('./data/flame_model/generic_model.pkl')
 
         self.flame = FLAMEModel(str(flame_path)) if flame_path.exists() else None

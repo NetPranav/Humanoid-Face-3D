@@ -101,7 +101,7 @@ def load_flame_pickle(model_path: str | Path) -> dict:
             return pickle.load(f, encoding="latin1")
     except Exception:
         with open(model_path, "rb") as f:
-            return _FlameUnpickler(f).load()
+            return _FlameUnpickler(f, encoding="latin1").load()
 
 
 # ---------------------------------------------------------------------------

@@ -45,9 +45,9 @@
 ---
 
 ## 4. Current Execution Plan
-1. **User Kaggle Datasets Upload:**
-   - `flame-model`: Private Kaggle dataset containing `generic_model.pkl` + `head_template.obj` (from https://flame.is.tue.mpg.de).
-   - `mica-pretrained`: Private Kaggle dataset containing `pretrained.tar` (from https://github.com/Zielon/MICA/releases).
+1. **Automated Kaggle Datasets (CLI):**
+   - ✅ `nightshowdown/flame-model`: Created and ready on Kaggle (`generic_model.pkl` + `head_template.obj`).
+   - 🔄 `nightshowdown/mica-pretrained`: Downloaded and currently uploading to Kaggle (`mica.tar` + `pretrained.tar`).
 2. **Job 01 (Phase 2.5 Geometry Preprocessing):**
    - Push `notebooks/kaggle/phase2_5_geometry_preprocessing.ipynb` to Kaggle (CPU session, 0 GPU quota consumed).
 3. **Job 02 (Phase 2 MICA Fine-Tuning):**
