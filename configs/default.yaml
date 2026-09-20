@@ -28,7 +28,7 @@ stage2:
   neutral_output: true            # Base mesh always canonical neutral (psi=0, theta=neutral) for UE5 ARKit
 
 stage3:
-  resolution: 512                 # UV displacement map resolution (512x512)
+  resolution: 1024                # UV displacement map resolution (1024x1024 Ultra-Resolution)
   in_channels: 6                  # Position (3) + Normal (3) maps rasterized from neutral mesh
   out_channels: 1                 # Scalar displacement magnitude along surface normals
   base_channels: 64

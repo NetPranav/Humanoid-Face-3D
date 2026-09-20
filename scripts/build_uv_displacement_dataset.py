@@ -111,7 +111,7 @@ def rasterize_uv_maps(
     hit_mask: np.ndarray,
     uv_coords: np.ndarray,
     uv_faces: np.ndarray,
-    resolution: int = 512
+    resolution: int = 1024
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Barycentric triangle rasterization over the FLAME UV parameterization.
@@ -344,7 +344,7 @@ def main():
     parser.add_argument('--scan_dir', type=str, required=True, help="Path to high-resolution scans")
     parser.add_argument('--flame_model', type=str, default='data/flame_model/generic_model.pkl')
     parser.add_argument('--output_dir', type=str, default='data/uv_displacement_dataset')
-    parser.add_argument('--resolution', type=int, default=512)
+    parser.add_argument('--resolution', type=int, default=1024, help="UV resolution (e.g. 1024)")
     args = parser.parse_args()
 
     scan_dir = Path(args.scan_dir)
