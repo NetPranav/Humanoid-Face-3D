@@ -11,8 +11,7 @@
 * [x] **Git Synchronized:** Branch `main` up to date with remote
 * [x] **Detail Resolution:** Upgraded to **1024×1024 Ultra-Resolution**
 * [x] **Unit Test Suite:** 73/73 tests passing
-* [x] **Kaggle CLI:** Installed and symlinked to `/Users/pranav/.local/bin/kaggle`
-* [ ] **Kaggle Credentials:** Awaiting user's Kaggle username to link token `KGAT_2ef9ab9c57c5ca109e7af862a81c6b21`
+* [x] **Kaggle Credentials:** Verified and authenticated as `nightshowdown` with Bearer API token
 
 ---
 
@@ -30,3 +29,4 @@
 *(New CLI outputs, loss metrics, and checkpoint events will append here)*
 
 `[2026-09-20 16:08]` Pipeline initialized. AGENTS.md, MEMORY.md, and view/ directory active.
+`[2026-09-20 16:12:24]` 📊 Status `nightshowdown/phase1-inference-baseline`: 403 Client Error: Forbidden for url: https://www.kaggle.com/api/v1/kernels/status?username=nightshowdown&kernelslug=phase1-inference-baseline
