@@ -93,7 +93,10 @@ def main():
                 sys.path.insert(0, str(mica_dir))
             from models.arcface import Arcface
             arcface_model = Arcface().to(device)
-            ckpt = torch.load(args.arcface_checkpoint, map_location=device)
+            try:
+                ckpt = torch.load(args.arcface_checkpoint, map_location=device, weights_only=False)
+            except TypeError:
+                ckpt = torch.load(args.arcface_checkpoint, map_location=device)
             state_dict = ckpt['arcface'] if isinstance(ckpt, dict) and 'arcface' in ckpt else ckpt
             arcface_model.load_state_dict(state_dict)
             arcface_model.eval()

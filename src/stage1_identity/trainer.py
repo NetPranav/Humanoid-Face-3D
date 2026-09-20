@@ -86,7 +86,10 @@ class MICAIdentityTrainer:
         if pretrained_ckpt and Path(pretrained_ckpt).exists():
             if self.is_main:
                 print(f"[Trainer] Loading pretrained weights from {pretrained_ckpt}...")
-            ckpt = torch.load(pretrained_ckpt, map_location=self.device)
+            try:
+                ckpt = torch.load(pretrained_ckpt, map_location=self.device, weights_only=False)
+            except TypeError:
+                ckpt = torch.load(pretrained_ckpt, map_location=self.device)
             state = ckpt.get('flameModel', ckpt.get('state_dict', ckpt))
             clean_state = {k.replace('regressor.', ''): v for k, v in state.items() if 'generator' not in k}
             self.model.load_state_dict(clean_state, strict=False)

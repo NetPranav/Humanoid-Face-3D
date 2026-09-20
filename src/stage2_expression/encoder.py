@@ -43,7 +43,10 @@ class ExpressionEncoder:
                 sys.path.insert(0, p)
 
         try:
-            ckpt = torch.load(self.checkpoint_path, map_location=self.device)
+            try:
+                ckpt = torch.load(self.checkpoint_path, map_location=self.device, weights_only=False)
+            except TypeError:
+                ckpt = torch.load(self.checkpoint_path, map_location=self.device)
             # If ckpt is a dict/OrderedDict with smirk_encoder keys, filter and strip prefix
             if isinstance(ckpt, dict) and 'state_dict' in ckpt:
                 state_dict = ckpt['state_dict']

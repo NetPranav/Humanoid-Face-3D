@@ -97,7 +97,10 @@ class MICAIdentityEncoder:
                 sys.path.insert(0, p)
 
         try:
-            ckpt = torch.load(self.checkpoint_path, map_location=self.device)
+            try:
+                ckpt = torch.load(self.checkpoint_path, map_location=self.device, weights_only=False)
+            except TypeError:
+                ckpt = torch.load(self.checkpoint_path, map_location=self.device)
             # 1. Initialize mapping regressor (512 -> 300)
             self.regressor = MappingNetwork(z_dim=512, map_hidden_dim=300, map_output_dim=300, hidden=3)
 
