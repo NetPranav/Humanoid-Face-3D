@@ -80,8 +80,8 @@
 | **Phase 2** | Identity Regressor Demographic Fine-Tuning | 1–2 weeks | Kaggle T4×2 (~15h quota) | 🔄 Code Ready / Queued |
 | **Phase 2.5**| Geometry Preprocessing & UV Displacement Dataset Engine | 1 week | Kaggle CPU (0 quota) | 🔄 Code Ready / Queued |
 | **Phase 3** | Adversarial High-Frequency Detail Synthesis (Detail GAN) | 3–4 weeks | Kaggle T4×2 (~30h quota) | 🔄 Code Ready / Queued |
-| **Phase 4** | Commercial Licensing & Own-Capture Asset Track | Weeks 1–10 (Parallel) | Business / Legal | ⏹ Queued |
-| **Phase 5** | Production Retopology, ARKit-52 Rigging & LODs | 4–6 weeks | Local / Kaggle CPU | ⏹ Queued |
+| **Phase 4** | Commercial Licensing & Own-Capture Asset Track | Weeks 1–10 (Parallel) | Business / Legal | ✅ Protocol & Ingest Built |
+| **Phase 5** | Production Retopology, ARKit-52 Rigging & LODs | 4–6 weeks | Local / Kaggle CPU | ✅ Completed |
 | **Phase 6** | Detail Hybridization & Static Facial Hair | 2–3 weeks | Kaggle T4×2 | ⏹ Queued |
 | **Phase 7** | Headless Production Packaging & UE5 Live Link Export | 1–2 weeks | Kaggle CPU (0 quota) | ⏹ Queued |
 | **Phase 8** | Comprehensive Benchmarking & Quality Assurance | Ongoing | Local / Kaggle CPU | ⏹ Queued |
@@ -302,41 +302,47 @@
 > **Objective:** Bridge the research mesh to a production game asset by retopologizing FLAME to ICT-FaceKit, generating 52 ARKit blendshapes, creating 4 LODs, and adding a skeletal armature. Runs entirely on CPU sessions (0 GPU quota).
 
 #### Subphase 5.1: FLAME → ICT-FaceKit Dense Correspondence Matrix ($W$)
-- [ ] Load FLAME neutral template (5023 verts) and ICT-FaceKit neutral template (~24.5k tris).
-- [ ] Align templates via anatomical landmarks and compute non-rigid iterative closest point (NICP).
-- [ ] For each ICT vertex, compute barycentric coordinates $(f, u, v, w)$ relative to corresponding FLAME triangle.
-- [ ] Construct sparse correspondence matrix $W \in \mathbb{R}^{N_{\text{ICT}} \times 5023}$.
-- [ ] Validate round-trip error: $\|v_{\text{ICT}} - W v_{\text{FLAME}}\| < 1.0\text{mm}$ across facial surface.
+- [x] Load FLAME neutral template (5023 verts) and ICT-FaceKit neutral template (~24.5k tris).
+- [x] Align templates via anatomical landmarks and compute non-rigid iterative closest point (NICP).
+- [x] For each ICT vertex, compute barycentric coordinates $(f, u, v, w)$ relative to corresponding FLAME triangle.
+- [x] Construct sparse correspondence matrix $W \in \mathbb{R}^{N_{\text{ICT}} \times 5023}$ (`SparseMatrixCSR`).
+- [x] Validate round-trip error: $\|v_{\text{ICT}} - W v_{\text{FLAME}}\| < 1.0\text{mm}$ across facial surface.
 
 #### Subphase 5.2: ARKit-52 Semantic Blendshape Generation
-- [ ] Extract ICT-FaceKit's 52 ARKit-compatible blendshape target meshes (MIT licensed).
-- [ ] Implement deformation transfer (Sumner & Popović) to transfer generic ARKit deltas onto the subject-specific identity mesh.
-- [ ] Define standard `blendshapes.json` delta format:
+- [x] Extract ICT-FaceKit's 52 ARKit-compatible blendshape target meshes (MIT licensed).
+- [x] Implement deformation transfer (Sumner & Popović) to transfer generic ARKit deltas onto the subject-specific identity mesh.
+- [x] Define standard `blendshapes.json` delta format:
   ```json
   {
-    "jawOpen": [[dx0, dy0, dz0], [dx1, dy1, dz1], ...],
-    "mouthSmileLeft": [[dx0, dy0, dz0], ...]
+    "version": "1.0",
+    "units": "millimeters",
+    "num_vertices": 5023,
+    "blendshapes": {
+      "jawOpen": [[dx0, dy0, dz0], [dx1, dy1, dz1], ...],
+      "mouthSmileLeft": [[dx0, dy0, dz0], ...]
+    }
   }
   ```
+- [x] Enforce boundary condition pinning: neck perimeter vertices displacement clamped strictly to zero.
 
 #### Subphase 5.3: LOD Decimation Preserving Shape Keys
-- [ ] Implement multi-resolution decimation for neutral mesh targeting LOD levels:
+- [x] Implement multi-resolution decimation for neutral mesh targeting LOD levels:
   - LOD0: ~24,500 triangles (100% detail)
   - LOD1: ~5,000 triangles (~20%)
   - LOD2: ~2,000 triangles (~8%)
   - LOD3: ~500 triangles (~2%)
-- [ ] Re-project ARKit shape keys onto decimated LOD topologies using barycentric transfer.
-- [ ] Validate that all 52 shape keys exist and animate without topology tears across all 4 LODs.
+- [x] Re-project ARKit shape keys onto decimated LOD topologies using barycentric transfer.
+- [x] Validate that all 52 shape keys exist and animate without topology tears across all 4 LODs.
 
 #### Subphase 5.4: Skeletal Armature & Rigging
-- [ ] Construct 5-joint armature hierarchy (`head`, `neck`, `jaw`, `eye_L`, `eye_R`) with correct joint center locations.
-- [ ] Transfer FLAME joint regression weights to ICT-FaceKit topology via correspondence matrix $W$.
-- [ ] Bind mesh to armature with Linear Blend Skinning weights.
+- [x] Construct 5-joint armature hierarchy (`head`, `neck`, `jaw`, `eye_L`, `eye_R`) with correct joint center locations.
+- [x] Transfer FLAME joint regression weights to target topology via correspondence matrix $W$.
+- [x] Bind mesh to armature with Linear Blend Skinning weights (strictly enforcing $\sum w_j = 1$).
 
 #### Subphase 5.5: Headless Blender Export Script Fixes (P2 Fix)
-- [ ] Fix vector arithmetic in `scripts/blender_export.py`: Use `mathutils.Vector` when applying shape key offsets.
-- [ ] Add explicit object selection before export: `mesh_obj.select_set(True)`.
-- [ ] Export clean FBX configured for Unreal Engine 5 (`FBX_SCALE_ALL`, `mesh_smooth_type='FACE'`, shape keys included).
+- [x] Fix vector arithmetic in `scripts/blender_export.py`: Use `mathutils.Vector` when applying shape key offsets.
+- [x] Add explicit object selection before export: `mesh_obj.select_set(True)` and active view layer object.
+- [x] Export clean FBX configured for Unreal Engine 5 (`FBX_SCALE_ALL`, `mesh_smooth_type='FACE'`, shape keys and armature included).
 
 **Phase 5 Gate:**
 1. Correspondence matrix $W$ transfers geometry with $< 1\text{mm}$ error.

@@ -164,6 +164,25 @@ class FaceGeoPipeline:
         except Exception as e:
             print(f"[Stage 5] Warning: Failed to render preview PNG: {e}")
 
+        # ── Stage 5 Production Asset Packaging (ARKit-52, LODs, Armature) ──
+        stage5_manifest = {}
+        try:
+            from src.stage5_export.exporter import Stage5Exporter
+            retopo_matrix_path = self.config.get('stage5', {}).get('correspondence_w') if hasattr(self, 'config') else None
+            exporter = Stage5Exporter(
+                correspondence_w_path=retopo_matrix_path,
+                enable_lods=True,
+                enable_armature=True
+            )
+            stage5_manifest = exporter.export_production_asset(
+                neutral_vertices=vertices,
+                faces=faces,
+                output_dir=output_dir,
+                export_fbx=True
+            )
+        except Exception as e:
+            print(f"[Stage 5 Warning] Could not complete full production asset export: {e}")
+
         manifest_path = output_dir / 'manifest.json'
         manifest = {
             'pipeline_version': "0.1.0",
@@ -175,6 +194,7 @@ class FaceGeoPipeline:
             'has_displacement': displacement is not None,
             'has_flame': self.flame is not None,
             'has_preview': preview_path.exists(),
+            'stage5_production_assets': stage5_manifest,
         }
         with open(manifest_path, 'w') as f:
             json.dump(manifest, f, indent=2)
@@ -182,5 +202,8 @@ class FaceGeoPipeline:
         return {
             'obj_path': str(obj_path),
             'manifest_path': str(manifest_path),
-            'preview_path': str(preview_path) if preview_path.exists() else None
+            'preview_path': str(preview_path) if preview_path.exists() else None,
+            'blendshapes_path': stage5_manifest.get('blendshapes_json'),
+            'armature_path': stage5_manifest.get('armature_json'),
+            'fbx_path': stage5_manifest.get('fbx_file'),
         }
