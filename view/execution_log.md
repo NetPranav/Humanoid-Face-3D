@@ -23,8 +23,8 @@
 |---|---|---|---|---|---|
 | `dataset_flame` | Prerequisite: FLAME 2020 Model | Local & Kaggle Cloud | 🟢 **Ready** | Cached in `data/flame_model/` | [flame-model](https://www.kaggle.com/datasets/nightshowdown/flame-model) |
 | `dataset_mica` | Prerequisite: MICA Pretrained Weights | Local & Kaggle Cloud | 🟢 **Uploaded** | Cached in `models_cache/mica/` | [mica-pretrained](https://www.kaggle.com/datasets/nightshowdown/mica-pretrained) |
-| `job_01` | Phase 2.5: Geometry Preprocessing 1024² | Kaggle CPU (0 GPU quota) | ⏳ Ready to Launch | One-shot dataset generation | `outputs/uv_dataset/` |
-| `job_02` | Phase 2: MICA Fine-Tuning | Kaggle GPU (2×T4) | ⏳ Queued | Every 500 steps (`checkpoint_latest.pt`) | `checkpoints/mica/` |
+| `job_01` | Phase 2.5: Geometry Preprocessing 1024² | Kaggle CPU (0 GPU quota) | 🟢 **COMPLETE** | One-shot dataset generation | [outputs/uv_displacement_dataset_1024/](outputs/uv_displacement_dataset_1024/) |
+| `job_02` | Phase 2: MICA Fine-Tuning | Kaggle GPU (2×T4) | ⏳ Ready to Launch | Every 500 steps (`checkpoint_latest.pt`) | `checkpoints/mica/` |
 | `job_03` | Phase 3: 1024² Detail GAN Training | Kaggle GPU (2×T4) | ⏳ Queued | Sliding window + 11.5h Emergency Save | `checkpoints/stage3/` |
 
 ---
@@ -57,3 +57,27 @@
 `[2026-09-20 16:44:48]` 📡 Upload Sync: `task-1691.log`: 93%|████████████████████████████████████▏  | 445M/479M [02:43<00:12, 3.02MB/s]
 `[2026-09-20 16:45:18]` 📡 Upload Sync: `task-1691.log`: Your private Dataset is being created. Please check progress at https://www.kaggle.com/datasets/nightshowdown/mica-pretrained
 `[2026-09-20 16:46:18]` 📡 Upload Sync: Task active, awaiting chunk progress...
+`[2026-09-20 16:58:01]` 🚀 Packaging kernel `nightshowdown/phase2-5-geometry-preprocessing` (GPU: False, Internet: True)
+`[2026-09-20 16:58:03]` ✅ Successfully pushed `nightshowdown/phase2-5-geometry-preprocessing` to Kaggle cloud!
+Your kernel title does not resolve to the specified id. This may result in surprising behavior. We suggest making your title something that resolves to the specified id. See https://en.wikipedia.org/wiki/Clean_URL#Slug for more information on how slugs are determined.
+Kernel version 1 successfully pushed.  Please check progress at https://www.kaggle.com/code/nightshowdown/phase-2-5-geometry-preprocessing-1024
+`[2026-09-20 16:58:18]` 📊 Status `nightshowdown/phase-2-5-geometry-preprocessing-1024`: nightshowdown/phase-2-5-geometry-preprocessing-1024 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-20 16:58:37]` ☁️ Kaggle Cloud Status: nightshowdown/phase-2-5-geometry-preprocessing-1024 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-20 16:58:50]` ☁️ Kaggle Cloud Status: nightshowdown/phase-2-5-geometry-preprocessing-1024 has status "KernelWorkerStatus.ERROR"
+`[2026-09-20 17:03:36]` 🚀 Packaging kernel `nightshowdown/phase-2-5-geometry-preprocessing-1024` (GPU: False, Internet: True)
+`[2026-09-20 17:03:38]` ✅ Successfully pushed `nightshowdown/phase-2-5-geometry-preprocessing-1024` to Kaggle cloud!
+Kernel version 2 successfully pushed.  Please check progress at https://www.kaggle.com/code/nightshowdown/phase-2-5-geometry-preprocessing-1024
+`[2026-09-20 17:03:58]` ☁️ Kaggle Cloud Status: nightshowdown/phase-2-5-geometry-preprocessing-1024 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-20 17:04:28]` ☁️ Kaggle Cloud Status: nightshowdown/phase-2-5-geometry-preprocessing-1024 has status "KernelWorkerStatus.COMPLETE"
+`[2026-09-20 17:07:04]` 🚀 Packaging kernel `nightshowdown/phase-2-5-geometry-preprocessing-1024` (GPU: False, Internet: True)
+`[2026-09-20 17:07:06]` ✅ Successfully pushed `nightshowdown/phase-2-5-geometry-preprocessing-1024` to Kaggle cloud!
+Kernel version 3 successfully pushed.  Please check progress at https://www.kaggle.com/code/nightshowdown/phase-2-5-geometry-preprocessing-1024
+`[2026-09-20 17:07:33]` ☁️ Kaggle Cloud Status: nightshowdown/phase-2-5-geometry-preprocessing-1024 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-20 17:10:35]` 🚀 Packaging kernel `nightshowdown/phase-2-5-geometry-preprocessing-1024` (GPU: False, Internet: True)
+`[2026-09-20 17:10:36]` ✅ Successfully pushed `nightshowdown/phase-2-5-geometry-preprocessing-1024` to Kaggle cloud!
+Kernel version 4 successfully pushed.  Please check progress at https://www.kaggle.com/code/nightshowdown/phase-2-5-geometry-preprocessing-1024
+`[2026-09-20 17:10:37]` ☁️ Kaggle Cloud Status: nightshowdown/phase-2-5-geometry-preprocessing-1024 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-20 17:11:08]` ☁️ Kaggle Cloud Status: nightshowdown/phase-2-5-geometry-preprocessing-1024 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-20 17:10:36]` 🚀 Packaged & launched Kernel version 4 with 3D centroid alignment & robust p99 fallback (commit `749cfaf`).
+`[2026-09-20 17:11:38]` ✅ Job 01 Cloud Status: `KernelWorkerStatus.COMPLETE`!
+`[2026-09-20 17:13:00]` 📥 Downloaded 1024×1024 UV displacement dataset (`p99 = 9.045 mm`, `16-bit uint PNG [0, 65535]`, normal maps, position maps, masks, and stats) to `outputs/uv_displacement_dataset_1024/`.

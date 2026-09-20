@@ -47,12 +47,18 @@
 ## 4. Current Execution Plan
 1. **Automated Kaggle Datasets (CLI):**
    - ✅ `nightshowdown/flame-model`: Created and ready on Kaggle (`generic_model.pkl` + `head_template.obj`).
-   - 🔄 `nightshowdown/mica-pretrained`: Downloaded and currently uploading to Kaggle (`mica.tar` + `pretrained.tar`).
-2. **Job 01 (Phase 2.5 Geometry Preprocessing):**
-   - Push `notebooks/kaggle/phase2_5_geometry_preprocessing.ipynb` to Kaggle (CPU session, 0 GPU quota consumed).
+   - 🔄 `nightshowdown/mica-pretrained`: Uploaded (`mica.tar` + `pretrained.tar`), indexing on Kaggle backend.
+2. **Job 01 (Phase 2.5 Geometry Preprocessing 1024²):**
+   - ✅ **COMPLETE** on Kaggle CPU (`nightshowdown/phase-2-5-geometry-preprocessing-1024`).
+   - Downloaded and verified outputs in `outputs/uv_displacement_dataset_1024/`:
+     * `subject_001_neutral_disp.png` (1024×1024 16-bit uint PNG, $p_{99} = 9.045\text{ mm}$)
+     * `subject_001_neutral_norm.png` (1024×1024 normal map)
+     * `subject_001_neutral_mask.png` (1024×1024 facial validity mask)
+     * `subject_001_neutral_pos.png` (1024×1024 position map)
+     * `normalization_stats.json` & `sample_preview.png`
 3. **Job 02 (Phase 2 MICA Fine-Tuning):**
    - Run feature extraction via `scripts/extract_arcface_features.py` to produce paired `.npz` files.
-   - Run `notebooks/kaggle/phase2_identity_finetune.ipynb` on Kaggle 2×T4.
+   - Run `notebooks/kaggle/phase2_identity_finetune.ipynb` on Kaggle 2×T4 once `mica-pretrained` is ready.
 4. **Job 03 (Phase 3 1024² Detail GAN Training):**
    - Run `notebooks/kaggle/phase3_detail_gan_train.ipynb` on Kaggle 2×T4.
 
