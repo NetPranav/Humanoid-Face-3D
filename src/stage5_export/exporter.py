@@ -32,6 +32,11 @@ from src.stage5_export.armature import (
     compute_linear_skinning_weights,
     export_armature_json
 )
+from src.stage5_export.stylize import (
+    FaceStylizer,
+    StylizationParameters,
+    resolve_stylization_params
+)
 
 
 class Stage5Exporter:
@@ -58,7 +63,8 @@ class Stage5Exporter:
         faces: np.ndarray,
         output_dir: Union[str, Path],
         template_blendshapes: Optional[Dict[str, np.ndarray]] = None,
-        export_fbx: bool = True
+        export_fbx: bool = True,
+        stylization_params: Optional[Union[StylizationParameters, Dict[str, float], str]] = None,
     ) -> Dict[str, Any]:
         """
         Executes the full Stage 5 production export workflow.
@@ -79,7 +85,22 @@ class Stage5Exporter:
             active_vertices = neutral_vertices.copy()
             active_faces = faces.copy()
 
+        # 1.5 Parametric Facial Stylization (Heroic / Chiseled / Sliders)
+        stylization_info = None
+        if stylization_params is not None:
+            resolved_p = resolve_stylization_params(stylization_params)
+            if not resolved_p.is_neutral():
+                stylizer = FaceStylizer()
+                active_vertices, stylize_deltas = stylizer.apply_stylization(active_vertices, resolved_p)
+                max_disp = float(np.max(np.linalg.norm(stylize_deltas, axis=1)))
+                print(f"[Stage 5] Applied parametric facial stylization (max disp: {max_disp:.3f})")
+                stylization_info = {
+                    "parameters": resolved_p.to_dict(),
+                    "max_displacement": max_disp
+                }
+
         # 2. ARKit-52 Blendshape Generation
+
         print("[Stage 5] Synthesizing ARKit-52 semantic blendshapes...")
         if template_blendshapes is not None:
             blendshapes = transfer_blendshapes_deformation(
@@ -169,6 +190,7 @@ class Stage5Exporter:
             "armature_json": armature_path,
             "fbx_file": str(fbx_output_path.resolve()) if has_fbx else None,
             "lods": lod_manifest,
+            "stylization": stylization_info,
             "num_vertices": int(len(active_vertices)),
             "num_triangles": int(len(active_faces)),
             "arkit_blendshapes_count": len(blendshapes),

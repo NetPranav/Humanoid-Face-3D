@@ -81,3 +81,4 @@ Kernel version 4 successfully pushed.  Please check progress at https://www.kagg
 `[2026-09-20 17:10:36]` 🚀 Packaged & launched Kernel version 4 with 3D centroid alignment & robust p99 fallback (commit `749cfaf`).
 `[2026-09-20 17:11:38]` ✅ Job 01 Cloud Status: `KernelWorkerStatus.COMPLETE`!
 `[2026-09-20 17:13:00]` 📥 Downloaded 1024×1024 UV displacement dataset (`p99 = 9.045 mm`, `16-bit uint PNG [0, 65535]`, normal maps, position maps, masks, and stats) to `outputs/uv_displacement_dataset_1024/`.
+`[2026-09-20 19:35:40]` ☁️ Kaggle Cloud Status: Command '['kaggle', 'kernels', 'status', 'nightshowdown/phase-2-5-geometry-preprocessing-1024']' timed out after 15 seconds

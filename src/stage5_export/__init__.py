@@ -31,6 +31,12 @@ from src.stage5_export.armature import (
     export_armature_json,
     load_armature_json
 )
+from src.stage5_export.stylize import (
+    StylizationParameters,
+    STYLIZATION_PRESETS,
+    resolve_stylization_params,
+    FaceStylizer
+)
 from src.stage5_export.exporter import Stage5Exporter
 
 __all__ = [
@@ -56,5 +62,10 @@ __all__ = [
     "compute_linear_skinning_weights",
     "export_armature_json",
     "load_armature_json",
+    "StylizationParameters",
+    "STYLIZATION_PRESETS",
+    "resolve_stylization_params",
+    "FaceStylizer",
     "Stage5Exporter",
 ]
+

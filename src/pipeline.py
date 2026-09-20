@@ -173,6 +173,7 @@ class FaceGeoPipeline:
         try:
             from src.stage5_export.exporter import Stage5Exporter
             retopo_matrix_path = self.config.get('stage5', {}).get('correspondence_w') if hasattr(self, 'config') else None
+            stylize_config = self.config.get('stage5', {}).get('stylize') if hasattr(self, 'config') else None
             exporter = Stage5Exporter(
                 correspondence_w_path=retopo_matrix_path,
                 enable_lods=True,
@@ -182,7 +183,8 @@ class FaceGeoPipeline:
                 neutral_vertices=vertices,
                 faces=faces,
                 output_dir=output_dir,
-                export_fbx=True
+                export_fbx=True,
+                stylization_params=stylize_config
             )
         except Exception as e:
             print(f"[Stage 5 Warning] Could not complete full production asset export: {e}")
