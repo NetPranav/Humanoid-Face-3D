@@ -72,6 +72,12 @@ def compute_ray_displacements(
     if np.abs(scan.vertices).max() > 10.0:
         scan.vertices = scan.vertices / 1000.0
 
+    # Align scan centroid to FLAME centroid if offset (e.g. SMPL body space offset by ~1.5m)
+    flame_center = flame_verts.mean(axis=0)
+    scan_center = scan.vertices.mean(axis=0)
+    if np.linalg.norm(scan_center - flame_center) > 0.05:
+        scan.vertices = scan.vertices - (scan_center - flame_center)
+
     # Ray origin: slightly offset behind vertex along normal to catch close intersections
     offset = 0.005  # 5mm in metres
     ray_origins = flame_verts - offset * flame_normals
@@ -98,6 +104,9 @@ def compute_ray_displacements(
                 disp_m[ray_idx] = dist_along_normal
                 hit_mask[ray_idx] = True
 
+        if hit_mask.sum() == 0:
+            raise RuntimeError("Ray hits were zero, falling back to nearest proximity")
+
         # Convert metres to millimetres for displacement maps
         return disp_m * 1000.0, hit_mask
 
@@ -107,6 +116,8 @@ def compute_ray_displacements(
         diff = closest_pts - flame_verts
         disp_m = np.sum(diff * flame_normals, axis=1).astype(np.float32)
         hit_mask = (distances <= (max_search_dist_mm / 1000.0))
+        if hit_mask.sum() == 0:
+            hit_mask = (distances <= max(float(np.percentile(distances, 95.0)), 0.05))
         return disp_m * 1000.0, hit_mask
 
 
@@ -299,11 +310,15 @@ def process_scan_corpus(
         processed_records.append((subj_id, scan_path, disp_mm, hit_mask, v_neutral, normals))
 
     # 2. Compute empirical corpus-wide p99 in millimetres
-    if all_displacements:
-        flat_disp = np.concatenate(all_displacements)
-        empirical_p99 = float(np.percentile(np.abs(flat_disp), 99.0))
+    valid_disps = [d for d in all_displacements if len(d) > 0]
+    if valid_disps:
+        flat_disp = np.concatenate(valid_disps)
+        if len(flat_disp) > 0:
+            empirical_p99 = float(np.percentile(np.abs(flat_disp), 99.0))
+        else:
+            empirical_p99 = 1.85
     else:
-        empirical_p99 = 1.85  # Fallback standard if no scans provided
+        empirical_p99 = 1.85  # Fallback standard if no valid displacements
 
     print(f"[Normalization] Measured Empirical Displacement p99: {empirical_p99:.4f} mm")
 
