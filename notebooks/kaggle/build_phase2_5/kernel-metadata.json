@@ -1,11 +1,11 @@
 {
-  "id": "nightshowdown/phase-1-inference-baseline",
-  "title": "Phase 1 Inference Baseline",
-  "code_file": "phase1_inference_baseline.ipynb",
+  "id": "nightshowdown/phase-2-5-geometry-preprocessing-1024",
+  "title": "Phase 2.5: Geometry Preprocessing 1024",
+  "code_file": "phase2_5_geometry_preprocessing.ipynb",
   "language": "python",
   "kernel_type": "notebook",
   "is_private": "true",
-  "enable_gpu": "true",
+  "enable_gpu": "false",
   "enable_tpu": "false",
   "enable_internet": "true",
   "dataset_sources": [
