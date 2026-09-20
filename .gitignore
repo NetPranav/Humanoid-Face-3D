@@ -33,8 +33,8 @@ ENV/
 # Model weights and datasets (large binary files)
 models_cache/
 checkpoints/
-data/flame_model/*.pkl
-data/test_images/*
+data/flame_model/*
+!data/flame_model/.gitkeep
 !data/test_images/.gitkeep
 outputs/
 uv_displacement_dataset/
