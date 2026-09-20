@@ -124,3 +124,52 @@ To prevent losing weights when Kaggle's 12-hour session expires:
        --stage 3
    ```
 5. In the next session, resume training from the latest Kaggle model checkpoint using `scripts/fetch_models.py`.
+
+---
+
+## 6. Disk Storage Quota Management (19.5GB Working Limit & 500-File Cap)
+
+> [!CAUTION]
+> **Kaggle strictly enforces a ~19.5GB disk limit and a ~500-file inode cap on `/kaggle/working`.**
+> Writing unpruned checkpoints, large dataset extractions, or heavy binaries directly into `/kaggle/working` will cause immediate disk-full crashes (`OSError: [Errno 28] No space left on device`).
+
+### Required Mitigation Strategies:
+1. **Route Scratch Data and Binaries to `/tmp`:**
+   - The `/tmp` directory on Kaggle is mounted on the container root filesystem with ~50GB+ headroom and does **not** count towards the 19.5GB persistent output quota.
+   - Install Blender or unpack large scan archives directly into `/tmp`:
+     ```bash
+     mkdir -p /tmp/blender && tar -xvf blender-4.1.0-linux-x64.tar.xz -C /tmp/blender --strip-components=1
+     export PATH="/tmp/blender:$PATH"
+     ```
+2. **Automated Checkpoint Pruning:**
+   - Both Stage 1 and Stage 3 trainers maintain only `generator_latest.pt`, `ema_generator.pt`, and a FIFO sliding window of the last 2 step checkpoints. Older intermediate step files are purged automatically.
+3. **Continuous Kaggle Models / Datasets Upload:**
+   - Rather than storing historical experiment runs on disk, upload verified checkpoints to the Kaggle Models registry and delete local working copies.
+
+---
+
+## 7. Dynamic GPU Topology & Single-GPU Fallback (P100 vs T4×2)
+
+Kaggle assigns GPUs dynamically based on pool availability. While this pipeline is optimized for 2× Tesla T4 GPUs (`--nproc_per_node=2`), Kaggle occasionally assigns a single Tesla P100 or single T4.
+
+**Do NOT hardcode `--nproc_per_node=2`.** Always query `torch.cuda.device_count()` dynamically in notebook cells:
+```python
+import torch
+n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
+print(f"[Launcher] Launching DDP across {n_gpus} GPU(s)...")
+
+!torchrun --nproc_per_node={n_gpus} src/stage3_detail/trainer.py \
+    --data_dir {DATA_DIR} \
+    --checkpoint_dir checkpoints/stage3_detail \
+    --batch_size 12
+```
+When running with `n_gpus=1`, `torchrun` executes on a single process without distributed inter-GPU overhead, preventing `invalid device ordinal` crashes.
+
+---
+
+## 8. Preventing `DeadKernelError` on Long Training Runs
+
+`DeadKernelError` on Kaggle is typically caused by:
+1. **CUDA Out-Of-Memory (OOM):** The Linux kernel invokes the OOM-killer on the Python process. The batch size of 12 per GPU is calibrated to stay well within T4's 16GB VRAM at 512×512 resolution.
+2. **Kaggle Idle Executor Timeout:** Kaggle shuts down notebooks if a cell produces zero stdout output for an extended period. All training loops emit health and diversity metrics every 100 steps.
+3. **Disk Quota Exhaustion:** Handled via Section 6 above.

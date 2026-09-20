@@ -123,6 +123,7 @@ def main():
 
     start_time = time.time()
     step = 0
+    saved_step_ckpts = []
 
     while step < args.total_steps:
         if sampler:
@@ -196,13 +197,27 @@ def main():
                     )
 
                 if step % HYPERPARAMS['checkpoint_every'] == 0:
-                    torch.save(g_raw.state_dict(), f"{args.checkpoint_dir}/generator_step_{step:06d}.pt")
+                    step_ckpt = f"{args.checkpoint_dir}/generator_step_{step:06d}.pt"
+                    torch.save(g_raw.state_dict(), step_ckpt)
+                    torch.save(g_raw.state_dict(), f"{args.checkpoint_dir}/generator_latest.pt")
                     torch.save(ema_generator.state_dict(), f"{args.checkpoint_dir}/ema_generator.pt")
-                    print(f"--> Saved checkpoint at step {step:06d} (generator & ema_generator)")
+
+                    # Quota Guard: Prune older step checkpoints to respect Kaggle's 19.5GB limit
+                    saved_step_ckpts.append(step_ckpt)
+                    while len(saved_step_ckpts) > 2:
+                        old_path = saved_step_ckpts.pop(0)
+                        if os.path.exists(old_path):
+                            try:
+                                os.remove(old_path)
+                            except OSError:
+                                pass
+
+                    print(f"--> Checkpoint saved at step {step:06d} (latest & ema_generator retained, older step files pruned)")
 
                 # Emergency checkpoint before Kaggle 12hr session kill
                 if (time.time() - start_time) / 3600 > HYPERPARAMS['max_session_hours']:
                     torch.save(ema_generator.state_dict(), f"{args.checkpoint_dir}/ema_generator.pt")
+                    torch.save(g_raw.state_dict(), f"{args.checkpoint_dir}/generator_latest.pt")
                     print(f"Session approaching 11.5 hours. Emergency checkpoint saved at step {step}.")
                     return
 
