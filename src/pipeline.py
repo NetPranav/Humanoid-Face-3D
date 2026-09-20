@@ -41,10 +41,13 @@ class FaceGeoPipeline:
 
     def _get_stage1(self):
         if self._stage1 is None:
-            from src.stage1_identity.inference import MICAIdentityEncoder
-            mica_ckpt = self.model_dir / 'mica/pretrained.tar'
-            if not mica_ckpt.exists():
-                mica_ckpt = Path('/kaggle/input/mica-pretrained/mica.tar')
+            mica_candidates = [
+                self.model_dir / 'mica/pretrained.tar',
+                self.model_dir / 'mica/mica.tar',
+                Path('/kaggle/input/mica-pretrained/pretrained.tar'),
+                Path('/kaggle/input/mica-pretrained/mica.tar'),
+            ]
+            mica_ckpt = next((p for p in mica_candidates if p.exists()), mica_candidates[0])
 
             stage1_cfg = self.cfg.get('stage1', {}) if isinstance(self.cfg, dict) else {}
             fusion_space = stage1_cfg.get('fusion_space', 'embedding')

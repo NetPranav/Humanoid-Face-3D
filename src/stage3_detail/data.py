@@ -68,13 +68,19 @@ class UVDisplacementDataset(Dataset):
 
         if meta_path.exists():
             meta = np.load(meta_path)
-            beta = torch.from_numpy(meta['beta']).float()
-            psi = torch.from_numpy(meta['psi']).float()
-            per_view_feats = torch.from_numpy(meta['per_view_feats']).float()
+            beta = torch.from_numpy(meta['beta']).float() if 'beta' in meta else torch.zeros(300, dtype=torch.float32)
+            psi = torch.from_numpy(meta['psi']).float() if 'psi' in meta else torch.zeros(100, dtype=torch.float32)
+            if 'per_view_feats' in meta:
+                pv = meta['per_view_feats']
+                if pv.ndim == 1:
+                    pv = pv[np.newaxis, :]
+                per_view_feats = torch.from_numpy(pv).float()
+            else:
+                per_view_feats = torch.zeros((1, 512), dtype=torch.float32)
         else:
             beta = torch.zeros(300, dtype=torch.float32)
             psi = torch.zeros(100, dtype=torch.float32)
-            per_view_feats = torch.zeros((3, 512), dtype=torch.float32)
+            per_view_feats = torch.zeros((1, 512), dtype=torch.float32)
 
         return {
             'disp': disp,

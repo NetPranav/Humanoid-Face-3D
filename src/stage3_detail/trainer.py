@@ -33,7 +33,7 @@ HYPERPARAMS = {
     'recon_lambda_end': 10.0,
     'recon_anneal_steps': 50000,
     'r1_gamma': 10.0,
-    'id_lambda': 5.0,
+    'id_lambda': 0.0,  # Kept at 0.0 until differentiable mesh rendering (nvdiffrast) is integrated
     'ema_decay': 0.999,
     'checkpoint_every': 500,
     'max_session_hours': 11.5,
@@ -56,9 +56,12 @@ def main():
     parser.add_argument('--data_dir', type=str, required=True, help="Path to preprocessed UV displacement dataset")
     parser.add_argument('--checkpoint_dir', type=str, default='/kaggle/working/checkpoints')
     parser.add_argument('--arcface_checkpoint', type=str, default=None, help="Path to pretrained ArcFace weights")
+    parser.add_argument('--id_lambda', type=float, default=0.0, help="Weight for identity loss (keep 0.0 until render pass is wired)")
     parser.add_argument('--total_steps', type=int, default=50000)
     parser.add_argument('--batch_size', type=int, default=12)
     args = parser.parse_args()
+
+    HYPERPARAMS['id_lambda'] = args.id_lambda
 
     # Multi-GPU DDP setup
     is_distributed = int(os.environ.get('WORLD_SIZE', 1)) > 1
@@ -168,7 +171,7 @@ def main():
                 total_g_loss = g_adv + recon_lambda * recon_loss
 
                 id_loss_val = 0.0
-                if arcface_model is not None and 'crop' in batch:
+                if arcface_model is not None and 'crop' in batch and HYPERPARAMS['id_lambda'] > 0.0:
                     target_photo = batch['crop'].to(device)
                     id_loss = identity_preservation_loss(fake_disp, target_photo, arcface_model)
                     total_g_loss = total_g_loss + HYPERPARAMS['id_lambda'] * id_loss

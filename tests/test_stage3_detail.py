@@ -80,6 +80,33 @@ class TestStage3DetailGAN(unittest.TestCase):
         self.assertGreater(len(val_subjects), 0)
         self.assertEqual(len(train_subjects) + len(val_subjects), 10)
 
+    @unittest.skipIf(torch is None, "PyTorch required for dataset getitem test")
+    def test_dataset_getitem_per_view_feats_fallback(self):
+        """Verify UVDisplacementDataset.__getitem__ safely falls back when per_view_feats is missing."""
+        import cv2
+        stem = "sub001_neutral"
+        # Write paired mock images
+        cv2.imwrite(str(self.temp_path / f"{stem}_disp.png"), np.zeros((32, 32), dtype=np.uint16))
+        cv2.imwrite(str(self.temp_path / f"{stem}_pos.png"), np.zeros((32, 32, 3), dtype=np.uint8))
+        cv2.imwrite(str(self.temp_path / f"{stem}_norm.png"), np.zeros((32, 32, 3), dtype=np.uint8))
+        cv2.imwrite(str(self.temp_path / f"{stem}_mask.png"), np.ones((32, 32), dtype=np.uint8) * 255)
+
+        # 1. Meta file with only beta and psi (missing per_view_feats)
+        np.savez(
+            str(self.temp_path / f"{stem}_meta.npz"),
+            beta=np.zeros(300, dtype=np.float32),
+            psi=np.zeros(100, dtype=np.float32)
+        )
+
+        ds = UVDisplacementDataset(str(self.temp_path), is_train=False)
+        item = ds[0]
+
+        self.assertIn('per_view_feats', item)
+        self.assertEqual(item['per_view_feats'].shape, (1, 512))
+        self.assertEqual(item['beta'].shape, (300,))
+        self.assertEqual(item['psi'].shape, (100,))
+
+
     # ── 3. Checkpoint Upload Gate Tests ────────────────────────────────
     def test_upload_gate_blocks_missing_ema_checkpoint(self):
         """Verify upload_checkpoint raises FileNotFoundError if ema_generator.pt is missing for stage 3."""
@@ -242,7 +269,7 @@ class TestStage3DetailGAN(unittest.TestCase):
     def test_hyperparams_structure(self):
         """Verify HYPERPARAMS contains required Stage 3 GAN training settings."""
         self.assertIn('id_lambda', HYPERPARAMS)
-        self.assertGreater(HYPERPARAMS['id_lambda'], 0.0)
+        self.assertGreaterEqual(HYPERPARAMS['id_lambda'], 0.0)
         self.assertIn('recon_lambda_start', HYPERPARAMS)
         self.assertIn('r1_gamma', HYPERPARAMS)
         self.assertIn('ema_decay', HYPERPARAMS)
