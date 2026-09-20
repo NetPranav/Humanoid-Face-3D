@@ -4,7 +4,7 @@
 
 pipeline:
   stages: [0, 1, 2, 5]            # Active pipeline stages (Stage 3 & 4 enabled when checkpoints exist)
-  input_min_photos: 3             # Strict minimum photos required for reliable 3D triangulation
+  input_min_photos: 1             # Minimum photos required (supports single portrait to 5-view fusion)
   input_max_photos: 5             # Maximum views fused in embedding space
 
 stage0:
