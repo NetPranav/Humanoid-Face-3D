@@ -18,8 +18,9 @@ target_dir = Path("/kaggle/working/Humanoid-Face-3D")
 if not (target_dir / "src/pipeline.py").exists():
     subprocess.run(["git", "clone", "--recurse-submodules", "https://github.com/NetPranav/Humanoid-Face-3D.git", str(target_dir)], check=True)
 os.chdir(str(target_dir))
+subprocess.run(["git", "fetch", "origin", "main"], check=False)
+subprocess.run(["git", "reset", "--hard", "origin/main"], check=False)
 subprocess.run(["git", "submodule", "update", "--init", "--recursive"], check=False)
-subprocess.run(["git", "pull", "origin", "main"], check=False)
 
 if str(target_dir) not in sys.path:
     sys.path.insert(0, str(target_dir))
