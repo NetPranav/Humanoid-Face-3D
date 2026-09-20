@@ -225,6 +225,9 @@ def load_flame_uv_layout(template_path_or_npz: Optional[str] = None) -> Tuple[np
         Path('/kaggle/input/flame-model/head_template.obj'),
         Path('/kaggle/input/flame-model/FLAME_texture.npz'),
     ])
+    if Path('/kaggle/input').exists():
+        candidates.extend(Path('/kaggle/input').glob('**/head_template.obj'))
+        candidates.extend(Path('/kaggle/input').glob('**/FLAME_texture.npz'))
 
     resolved_path = None
     for cand in candidates:
@@ -352,6 +355,7 @@ def main():
     parser.add_argument('--scan_dir', type=str, required=True, help="Path to high-resolution scans")
     parser.add_argument('--flame_model', type=str, default='data/flame_model/generic_model.pkl')
     parser.add_argument('--output_dir', type=str, default='data/uv_displacement_dataset')
+    parser.add_argument('--uv_template', type=str, default=None, help="Path to head_template.obj or FLAME_texture.npz")
     parser.add_argument('--resolution', type=int, default=1024, help="UV resolution (e.g. 1024)")
     args = parser.parse_args()
 
@@ -359,14 +363,22 @@ def main():
     scan_files = []
     if scan_dir.exists():
         for p in scan_dir.glob("**/*.obj"):
+            if p.name.lower() == "head_template.obj":
+                continue
             subj_id = p.parent.name
             scan_files.append((subj_id, str(p)))
+        # If the scan_dir contains head_template.obj and no other scans were found
+        if not scan_files:
+            for p in scan_dir.glob("**/*.obj"):
+                subj_id = p.parent.name
+                scan_files.append((subj_id, str(p)))
 
     process_scan_corpus(
         scan_files=scan_files,
         flame_model_path=args.flame_model,
         output_dir=args.output_dir,
-        resolution=args.resolution
+        resolution=args.resolution,
+        uv_template_path=args.uv_template
     )
 
 
