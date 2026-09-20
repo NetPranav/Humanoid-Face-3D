@@ -1,6 +1,6 @@
 {
   "id": "nightshowdown/phase-1-inference-baseline",
-  "title": "Phase 1: Multi-View Inference Baseline",
+  "title": "Phase 1 Inference Baseline",
   "code_file": "phase1_inference_baseline.ipynb",
   "language": "python",
   "kernel_type": "notebook",
