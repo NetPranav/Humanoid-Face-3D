@@ -92,7 +92,7 @@ To guarantee canonical neutral base mesh convergence:
 Each capture session is structured in the following format:
 ```
 data/raw_captures/{session_id}/
-├── metadata.json              # Date, operator, camera settings, calibration values
+├── metadata.json              # Date, operator, camera settings, calibration values, demographic/morphology tags
 ├── release_form.pdf           # Signed talent release document
 ├── scale_calibration.png      # 100mm gauge bar reference photo
 ├── color_checker.png          # X-Rite chart reference photo
@@ -102,3 +102,31 @@ data/raw_captures/{session_id}/
 ├── view_3_left90.png          # Cam 3 (-90° yaw)
 └── view_4_right90.png         # Cam 4 (+90° yaw)
 ```
+
+---
+
+## 7. Anthropometric Diversity & Morphological Stratification Quotas
+
+To prevent the pipeline from collapsing into population-average facial geometry ("the linear basis ceiling"), recruitment and capture quotas must be stratified deliberately across five key morphological dimensions:
+
+### 7.1 Stratification Matrix (Minimum Cohort Size: $N=50$)
+1. **BMI & Craniofacial Build:**
+   - **Lean / Ectomorphic** ($< 21.0\,\text{kg/m}^2$): 25% ($N \ge 12$). Distinct zygomatic arches, hollowed buccal fat, sharp temporal lines.
+   - **Muscular / Mesomorphic** ($21.0 - 27.0\,\text{kg/m}^2$): 45% ($N \ge 22$). Heavy masseter bulk, squared gonial angles, thick neck musculature.
+   - **Full / Endomorphic** ($> 28.0\,\text{kg/m}^2$): 30% ($N \ge 15$). Rounded mandibular contours, substantial buccal fullness, prominent submental fat pads.
+2. **Mandibular Architecture:**
+   - **Hyper-Gonial (Squared):** Flared gonial angles, broad bicardinal width ($\ge 125\,\text{mm}$ intergonial distance).
+   - **Meso-Mandibular (Oval):** Standard athletic taper.
+   - **Tapered / V-Line:** Sharp mental point, narrow intergonial distance ($< 105\,\text{mm}$).
+3. **Lip & Soft-Tissue Volume:**
+   - Full vermilion borders (prominent upper/lower lip volume).
+   - Thin vermilion borders (flat perioral structure).
+4. **Global Ancestral Craniofacial Diversity:**
+   - Equitable representation across African, East Asian, South Asian, European, and Indigenous/Hispanic craniofacial structures ($\ge 20\%$ per ancestral group).
+5. **Age Distribution:**
+   - Young adult (18–30): 35%
+   - Mid-career (31–50): 45%
+   - Mature (51+): 20% (for natural skin laxity and facial furrow baselines).
+
+All session `metadata.json` files must include the mandatory `morphology` block defined in [`DOCS/04_diversity_and_identity_fidelity.md`](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/04_diversity_and_identity_fidelity.md).
+

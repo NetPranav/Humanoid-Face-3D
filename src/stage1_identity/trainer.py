@@ -53,6 +53,8 @@ class MICAIdentityTrainer:
         lr: float = 1e-4,
         weight_decay: float = 1e-4,
         vert_loss_lambda: float = 1.0,
+        id_loss_lambda: float = 0.5,
+        contour_loss_lambda: float = 0.5,
         batch_size: int = 16,
         max_epochs: int = 50,
         max_hours: float = 11.5
@@ -71,6 +73,8 @@ class MICAIdentityTrainer:
         self.lr = lr
         self.weight_decay = weight_decay
         self.vert_loss_lambda = vert_loss_lambda
+        self.id_loss_lambda = id_loss_lambda
+        self.contour_loss_lambda = contour_loss_lambda
         self.batch_size = batch_size
         self.max_epochs = max_epochs
         self.max_seconds = max_hours * 3600.0
@@ -80,6 +84,20 @@ class MICAIdentityTrainer:
         self.flame = FLAMEModel(flame_model_path, scale_to_mm=False)
         # shapedirs shape: (5023, 3, 300)
         self.shapedirs = torch.from_numpy(self.flame.shapedirs).float().to(self.device)
+
+        # Compute anatomical focal weight mask (mandible, chin, zygomatic arches)
+        # to heavily penalize collapse to population-average jaw/cheek morphology
+        v_temp = torch.from_numpy(self.flame.v_template).float().to(self.device)
+        y_min, y_max = v_temp[:, 1].min(), v_temp[:, 1].max()
+        z_min, z_max = v_temp[:, 2].min(), v_temp[:, 2].max()
+        y_norm = (v_temp[:, 1] - y_min) / (y_max - y_min + 1e-8)
+        z_norm = (v_temp[:, 2] - z_min) / (z_max - z_min + 1e-8)
+
+        # Focal mask: lower face, chin, and mandibular border
+        focal_mask = (y_norm >= 0.15) & (y_norm <= 0.60) & (z_norm >= 0.20)
+        weights = torch.ones((v_temp.shape[0], 1), device=self.device)
+        weights[focal_mask] = 2.5  # 2.5x gradient penalty on jaw/cheek errors
+        self.focal_weights = weights
 
         # 2. Build model
         self.model = MappingNetwork(z_dim=512, map_hidden_dim=300, map_output_dim=300, hidden=3).to(self.device)
@@ -132,18 +150,33 @@ class MICAIdentityTrainer:
 
     def compute_loss(self, pred_beta: torch.Tensor, gt_beta: torch.Tensor) -> Tuple[torch.Tensor, float, float]:
         """
-        Computes combined L1 shape parameter loss and L1 3D vertex reconstruction loss.
+        Computes composite loss:
+        1. L1 shape coefficient loss (macro parameter error)
+        2. Cosine identity orientation loss (penalizes shrinkage toward population mean)
+        3. L1 3D vertex reconstruction loss in millimeters
+        4. Anatomical focal contour loss (mandibular and chin emphasis)
         """
         # Shape coefficient loss
         loss_beta = torch.mean(torch.abs(pred_beta - gt_beta))
 
+        # Identity directional cosine loss in PCA space
+        cos_sim = torch.nn.functional.cosine_similarity(pred_beta, gt_beta, dim=-1)
+        loss_id = torch.mean(1.0 - cos_sim)
+
         # 3D Vertex loss in millimetres (native FLAME units in metres -> multiply by 1000)
-        # shapedirs: (5023, 3, 300)
         beta_diff = pred_beta - gt_beta  # (B, 300)
         vert_diff = torch.einsum('bk,vck->bvc', beta_diff, self.shapedirs) * 1000.0  # (B, 5023, 3) in mm
         loss_vert = torch.mean(torch.abs(vert_diff))
 
-        total_loss = loss_beta + self.vert_loss_lambda * loss_vert
+        # Focal contour loss on jawline and cheekbone anatomy
+        loss_contour = torch.mean(self.focal_weights * torch.abs(vert_diff))
+
+        total_loss = (
+            loss_beta +
+            self.vert_loss_lambda * loss_vert +
+            self.id_loss_lambda * loss_id +
+            self.contour_loss_lambda * loss_contour
+        )
         return total_loss, float(loss_beta.item()), float(loss_vert.item())
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:

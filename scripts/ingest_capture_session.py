@@ -87,11 +87,32 @@ def ingest_session(
             'has_embedding': det.embedding is not None,
         }
 
+    # Extract demographic/morphology tags if metadata.json exists
+    morphology_data = {}
+    meta_file = session_path / "metadata.json"
+    if meta_file.exists():
+        try:
+            with open(meta_file, "r") as f:
+                raw_meta = json.load(f)
+            morphology_data = raw_meta.get("morphology", {})
+            print(f"  📋 Ingested morphology metadata: {morphology_data}")
+        except Exception as e:
+            print(f"  ⚠️ Warning: Could not parse metadata.json in session: {e}")
+    else:
+        print("  ⚠️ Note: No metadata.json found. Consider recording morphology attributes per DOCS/04_diversity_and_identity_fidelity.md")
+
     # Package session manifest
     manifest = {
         'session_id': session_path.name,
         'views_count': len(view_records),
         'views': view_records,
+        'morphology': {
+            'build_category': morphology_data.get('build_category', 'unspecified'),
+            'mandibular_type': morphology_data.get('mandibular_type', 'unspecified'),
+            'soft_tissue_volume': morphology_data.get('soft_tissue_volume', 'unspecified'),
+            'ancestry_category': morphology_data.get('ancestry_category', 'unspecified'),
+            'estimated_bmi': morphology_data.get('estimated_bmi', None),
+        },
         'is_valid': True,
         'calibration_target': 'in_house_85mm_cross_polarized',
     }
