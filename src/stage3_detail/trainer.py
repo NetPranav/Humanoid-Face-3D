@@ -58,10 +58,14 @@ def main():
     parser.add_argument('--arcface_checkpoint', type=str, default=None, help="Path to pretrained ArcFace weights")
     parser.add_argument('--id_lambda', type=float, default=0.0, help="Weight for identity loss (keep 0.0 until render pass is wired)")
     parser.add_argument('--total_steps', type=int, default=50000)
-    parser.add_argument('--batch_size', type=int, default=12)
+    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--resolution', type=int, default=512, help="Target training resolution (e.g. 512 or 1024)")
+    parser.add_argument('--checkpoint_every', type=int, default=250, help="Steps between checkpoint saves")
+    parser.add_argument('--resume', type=str, default=None, help="Path to checkpoint_latest.pt to resume training")
     args = parser.parse_args()
 
     HYPERPARAMS['id_lambda'] = args.id_lambda
+    HYPERPARAMS['checkpoint_every'] = args.checkpoint_every
 
     # Multi-GPU DDP setup
     is_distributed = int(os.environ.get('WORLD_SIZE', 1)) > 1
@@ -123,13 +127,41 @@ def main():
     scaler_g = GradScaler('cuda', enabled=torch.cuda.is_available())
     scaler_d = GradScaler('cuda', enabled=torch.cuda.is_available())
 
-    dataset = UVDisplacementDataset(args.data_dir, is_train=True)
+    dataset = UVDisplacementDataset(args.data_dir, is_train=True, target_resolution=args.resolution)
     sampler = DistributedSampler(dataset, shuffle=True) if is_distributed else None
     dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=2, pin_memory=True)
 
     start_time = time.time()
     step = 0
     saved_step_ckpts = []
+
+    # Invariant 3: Resumability from checkpoint_latest.pt
+    if args.resume and os.path.exists(args.resume):
+        try:
+            ckpt = torch.load(args.resume, map_location=device, weights_only=False)
+        except TypeError:
+            ckpt = torch.load(args.resume, map_location=device)
+        if isinstance(ckpt, dict) and 'generator' in ckpt:
+            g_raw.load_state_dict(ckpt['generator'])
+            if 'discriminator' in ckpt:
+                d_raw.load_state_dict(ckpt['discriminator'])
+            if 'opt_g' in ckpt:
+                opt_g.load_state_dict(ckpt['opt_g'])
+            if 'opt_d' in ckpt:
+                opt_d.load_state_dict(ckpt['opt_d'])
+            if 'scaler_g' in ckpt and scaler_g is not None and ckpt['scaler_g'] is not None:
+                scaler_g.load_state_dict(ckpt['scaler_g'])
+            if 'scaler_d' in ckpt and scaler_d is not None and ckpt['scaler_d'] is not None:
+                scaler_d.load_state_dict(ckpt['scaler_d'])
+            if 'ema_generator' in ckpt:
+                ema_generator.load_state_dict(ckpt['ema_generator'])
+            step = ckpt.get('step', 0)
+            if rank == 0:
+                print(f"[Stage 3] Resumed training state from {args.resume} at step {step}")
+        elif isinstance(ckpt, dict):
+            g_raw.load_state_dict(ckpt)
+            if rank == 0:
+                print(f"[Stage 3] Loaded generator weights from {args.resume}")
 
     while step < args.total_steps:
         if sampler:
@@ -205,6 +237,16 @@ def main():
                 if step % HYPERPARAMS['checkpoint_every'] == 0:
                     step_ckpt = f"{args.checkpoint_dir}/generator_step_{step:06d}.pt"
                     torch.save(g_raw.state_dict(), step_ckpt)
+                    torch.save({
+                        'step': step,
+                        'generator': g_raw.state_dict(),
+                        'discriminator': d_raw.state_dict(),
+                        'opt_g': opt_g.state_dict(),
+                        'opt_d': opt_d.state_dict(),
+                        'scaler_g': scaler_g.state_dict() if scaler_g else None,
+                        'scaler_d': scaler_d.state_dict() if scaler_d else None,
+                        'ema_generator': ema_generator.state_dict(),
+                    }, f"{args.checkpoint_dir}/checkpoint_latest.pt")
                     torch.save(g_raw.state_dict(), f"{args.checkpoint_dir}/generator_latest.pt")
                     torch.save(ema_generator.state_dict(), f"{args.checkpoint_dir}/ema_generator.pt")
 
@@ -222,6 +264,16 @@ def main():
 
                 # Emergency checkpoint before Kaggle 12hr session kill
                 if (time.time() - start_time) / 3600 > HYPERPARAMS['max_session_hours']:
+                    torch.save({
+                        'step': step,
+                        'generator': g_raw.state_dict(),
+                        'discriminator': d_raw.state_dict(),
+                        'opt_g': opt_g.state_dict(),
+                        'opt_d': opt_d.state_dict(),
+                        'scaler_g': scaler_g.state_dict() if scaler_g else None,
+                        'scaler_d': scaler_d.state_dict() if scaler_d else None,
+                        'ema_generator': ema_generator.state_dict(),
+                    }, f"{args.checkpoint_dir}/checkpoint_latest.pt")
                     torch.save(ema_generator.state_dict(), f"{args.checkpoint_dir}/ema_generator.pt")
                     torch.save(g_raw.state_dict(), f"{args.checkpoint_dir}/generator_latest.pt")
                     print(f"Session approaching 11.5 hours. Emergency checkpoint saved at step {step}.")
