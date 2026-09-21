@@ -250,7 +250,7 @@ class FaceStylizer:
             z_weight = np.clip((z_norm - 0.20) / 0.40, 0.0, 1.0)
             x_weight = np.clip(abs_x / 0.70, 0.0, 1.0)
             w_jaw = y_weight * z_weight * x_weight * pinning_mask
-            disp_x = sign_x * (p.jaw_width * 0.035 * H) * w_jaw
+            disp_x = sign_x * (p.jaw_width * 0.095 * H) * w_jaw
             deltas[:, 0] += disp_x
 
         # ── 2. JAW SQUARENESS ─────────────────────────────────────────────
@@ -263,8 +263,8 @@ class FaceStylizer:
             z_weight = np.clip((z_norm - 0.35) / 0.45, 0.0, 1.0)
             w_sq = y_weight * x_corner_weight * z_weight * pinning_mask
 
-            deltas[:, 0] += sign_x * (p.jaw_squareness * 0.025 * H) * w_sq
-            deltas[:, 2] += (p.jaw_squareness * 0.012 * H) * w_sq
+            deltas[:, 0] += sign_x * (p.jaw_squareness * 0.070 * H) * w_sq
+            deltas[:, 2] += (p.jaw_squareness * 0.035 * H) * w_sq
 
         # ── 3. CHIN DEPTH ─────────────────────────────────────────────────
         # Anterior (+Z) projection of mental protuberance
@@ -274,7 +274,7 @@ class FaceStylizer:
             z_weight = np.clip((z_norm - 0.50) / 0.40, 0.0, 1.0)
             w_chin = y_weight * x_weight * z_weight * pinning_mask
 
-            deltas[:, 2] += (p.chin_depth * 0.035 * H) * w_chin
+            deltas[:, 2] += (p.chin_depth * 0.090 * H) * w_chin
 
         # ── 4. CHIN WIDTH ─────────────────────────────────────────────────
         # Lateral width of chin pad (squared vs pointed chin)
@@ -284,7 +284,7 @@ class FaceStylizer:
             z_weight = np.clip((z_norm - 0.60) / 0.35, 0.0, 1.0)
             w_cw = y_weight * x_flank_weight * z_weight * pinning_mask
 
-            deltas[:, 0] += sign_x * (p.chin_width * 0.022 * H) * w_cw
+            deltas[:, 0] += sign_x * (p.chin_width * 0.065 * H) * w_cw
 
         # ── 5. CHIN CLEFT ─────────────────────────────────────────────────
         # Midline vertical groove flanked by subtle bilateral prominences
@@ -294,12 +294,12 @@ class FaceStylizer:
             # Central depression
             midline_weight = np.exp(-(abs_x / 0.06) ** 2)
             w_cleft = y_weight * z_weight * midline_weight * pinning_mask
-            deltas[:, 2] -= (p.chin_cleft * 0.016 * H) * w_cleft
+            deltas[:, 2] -= (p.chin_cleft * 0.045 * H) * w_cleft
 
             # Complementary lateral tubercles
             bilateral_weight = np.exp(-((abs_x - 0.12) / 0.07) ** 2)
             w_tub = y_weight * z_weight * bilateral_weight * pinning_mask
-            deltas[:, 2] += (p.chin_cleft * 0.008 * H) * w_tub
+            deltas[:, 2] += (p.chin_cleft * 0.025 * H) * w_tub
 
         # ── 6. GONIAL FLARE ───────────────────────────────────────────────
         # Sharp lateral/posterior expansion at the mandibular angle (jaw corners)
@@ -310,9 +310,9 @@ class FaceStylizer:
             z_weight = np.exp(-((z_norm - 0.40) / 0.20) ** 2)
             w_gf = y_weight * x_weight * z_weight * pinning_mask
 
-            deltas[:, 0] += sign_x * (p.gonial_flare * 0.040 * H) * w_gf
-            deltas[:, 1] -= (p.gonial_flare * 0.008 * H) * w_gf  # Crisp downward hook
-            deltas[:, 2] -= (p.gonial_flare * 0.006 * H) * w_gf  # Posterior tuck
+            deltas[:, 0] += sign_x * (p.gonial_flare * 0.100 * H) * w_gf
+            deltas[:, 1] -= (p.gonial_flare * 0.020 * H) * w_gf  # Crisp downward hook
+            deltas[:, 2] -= (p.gonial_flare * 0.015 * H) * w_gf  # Posterior tuck
 
         # ── 7. CHEEKBONE PROMINENCE ───────────────────────────────────────
         # Anterolateral projection of the zygomatic arches
@@ -322,8 +322,8 @@ class FaceStylizer:
             z_weight = np.clip((z_norm - 0.40) / 0.45, 0.0, 1.0)
             w_cb = y_weight * x_weight * z_weight * pinning_mask
 
-            deltas[:, 0] += sign_x * (p.cheekbone_prominence * 0.028 * H) * w_cb
-            deltas[:, 2] += (p.cheekbone_prominence * 0.024 * H) * w_cb
+            deltas[:, 0] += sign_x * (p.cheekbone_prominence * 0.075 * H) * w_cb
+            deltas[:, 2] += (p.cheekbone_prominence * 0.065 * H) * w_cb
 
         # ── 8. BROW PROMINENCE ────────────────────────────────────────────
         # Anterior shelf projection of the supraorbital arches
@@ -333,8 +333,8 @@ class FaceStylizer:
             z_weight = np.clip((z_norm - 0.55) / 0.40, 0.0, 1.0)
             w_bp = y_weight * x_weight * z_weight * pinning_mask
 
-            deltas[:, 2] += (p.brow_prominence * 0.022 * H) * w_bp
-            deltas[:, 1] -= (p.brow_prominence * 0.005 * H) * w_bp
+            deltas[:, 2] += (p.brow_prominence * 0.065 * H) * w_bp
+            deltas[:, 1] -= (p.brow_prominence * 0.015 * H) * w_bp
 
         # Guarantee strict neck boundary pinning
         deltas[pinning_mask == 0.0] = 0.0
