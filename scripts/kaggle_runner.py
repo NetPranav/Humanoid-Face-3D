@@ -47,11 +47,18 @@ KERNEL_CONFIGS = {
         "datasets": ["nightshowdown/flame-model", "nightshowdown/mica-pretrained"],
     },
     "phase3": {
-        "slug": "phase3-detail-gan-train",
+        "slug": "phase-3-detail-gan-train",
         "title": "Phase 3: 1024 Ultra-Detail GAN Training",
         "notebook": "phase3_detail_gan_train.ipynb",
         "enable_gpu": True,  # 2xT4
         "datasets": [],
+    },
+    "production_batch": {
+        "slug": "phase-production-cloud-batch-ue5",
+        "title": "Production Cloud Batch: Multi-View Reconstruct & UE5 Rig",
+        "notebook": "phase_production_cloud_batch.ipynb",
+        "enable_gpu": True,
+        "datasets": ["nightshowdown/flame-model"],
     },
 }
 
@@ -65,6 +72,24 @@ def log_event(message: str):
     VIEW_DIR.mkdir(parents=True, exist_ok=True)
     with open(EXECUTION_LOG, "a") as f:
         f.write(formatted)
+
+
+def get_kaggle_env() -> Dict[str, str]:
+    """Resolves active Kaggle credentials and Bearer token dynamically."""
+    env = os.environ.copy()
+    kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
+    if kaggle_json.exists():
+        try:
+            with open(kaggle_json) as f:
+                data = json.load(f)
+            if "key" in data and str(data["key"]).startswith("KGAT_"):
+                env["KAGGLE_API_TOKEN"] = data["key"]
+            if "username" in data:
+                env["KAGGLE_USERNAME"] = data["username"]
+                env["KAGGLE_KEY"] = data["key"]
+        except Exception:
+            pass
+    return env
 
 
 def launch_kernel(phase_key: str, user: str = DEFAULT_USER) -> str:
@@ -105,11 +130,7 @@ def launch_kernel(phase_key: str, user: str = DEFAULT_USER) -> str:
     log_event(f"🚀 Packaging kernel `{kernel_id}` (GPU: {cfg['enable_gpu']}, Internet: True)")
 
     cmd = ["kaggle", "kernels", "push", "-p", str(staging_dir)]
-    env = os.environ.copy()
-    if "KAGGLE_API_TOKEN" not in env:
-        env["KAGGLE_API_TOKEN"] = "KGAT_2ef9ab9c57c5ca109e7af862a81c6b21"
-
-    res = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    res = subprocess.run(cmd, capture_output=True, text=True, env=get_kaggle_env())
     if res.returncode == 0:
         log_event(f"✅ Successfully pushed `{kernel_id}` to Kaggle cloud!\n{res.stdout.strip()}")
     else:
@@ -122,11 +143,7 @@ def launch_kernel(phase_key: str, user: str = DEFAULT_USER) -> str:
 def check_kernel_status(kernel_id: str) -> str:
     """Checks the cloud status of a running kernel."""
     cmd = ["kaggle", "kernels", "status", kernel_id]
-    env = os.environ.copy()
-    if "KAGGLE_API_TOKEN" not in env:
-        env["KAGGLE_API_TOKEN"] = "KGAT_2ef9ab9c57c5ca109e7af862a81c6b21"
-
-    res = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    res = subprocess.run(cmd, capture_output=True, text=True, env=get_kaggle_env())
     output = res.stdout.strip()
     log_event(f"📊 Status `{kernel_id}`: {output}")
     return output
@@ -139,11 +156,7 @@ def pull_kernel_output(kernel_id: str, dest_dir: str = "outputs") -> Path:
 
     log_event(f"📥 Pulling output for `{kernel_id}` to {target_path}...")
     cmd = ["kaggle", "kernels", "output", kernel_id, "-p", str(target_path)]
-    env = os.environ.copy()
-    if "KAGGLE_API_TOKEN" not in env:
-        env["KAGGLE_API_TOKEN"] = "KGAT_2ef9ab9c57c5ca109e7af862a81c6b21"
-
-    res = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    res = subprocess.run(cmd, capture_output=True, text=True, env=get_kaggle_env())
     if res.returncode == 0:
         log_event(f"✅ Outputs downloaded to {target_path}")
     else:
