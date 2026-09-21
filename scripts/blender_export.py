@@ -209,6 +209,7 @@ def bind_skinning_weights(mesh_obj, armature_obj, weights, joint_names):
 def apply_blendshapes(mesh_obj, blendshapes_path: str):
     import bpy
     from mathutils import Vector
+    import numpy as np
 
     bs_file = Path(blendshapes_path) if blendshapes_path else None
     if not bs_file or not bs_file.exists():
@@ -222,11 +223,28 @@ def apply_blendshapes(mesh_obj, blendshapes_path: str):
     bs_dict = bs_raw.get("blendshapes", bs_raw)
     print(f"[Blender Export] Applying {len(bs_dict)} ARKit shape key(s) to {mesh_obj.name}...")
 
-    for bs_name, deltas in bs_dict.items():
-        kb = mesh_obj.shape_key_add(name=bs_name, from_mix=False)
-        for idx, d in enumerate(deltas):
-            if idx < len(kb.data):
-                kb.data[idx].co = kb.data[idx].co + Vector(d)
+    n_verts = len(mesh_obj.data.vertices)
+    basis_flat = np.empty(n_verts * 3, dtype=np.float32)
+    mesh_obj.data.vertices.foreach_get('co', basis_flat)
+    basis_coords = basis_flat.reshape(n_verts, 3)
+
+    try:
+        for bs_name, deltas in bs_dict.items():
+            kb = mesh_obj.shape_key_add(name=bs_name, from_mix=False)
+            d_arr = np.asarray(deltas, dtype=np.float32)
+            n_match = min(n_verts, len(d_arr))
+            target_coords = basis_coords.copy()
+            target_coords[:n_match] += d_arr[:n_match]
+            kb.data.foreach_set('co', target_coords.reshape(-1))
+    except Exception as e:
+        print(f"[Blender Export] Falling back to per-point shape keys: {e}")
+        for bs_name, deltas in bs_dict.items():
+            kb = mesh_obj.data.shape_keys.key_blocks.get(bs_name)
+            if kb is None:
+                kb = mesh_obj.shape_key_add(name=bs_name, from_mix=False)
+            for idx, d in enumerate(deltas):
+                if idx < len(kb.data):
+                    kb.data[idx].co = Vector(basis_coords[idx] + d)
 
 
 def import_obj_mesh(mesh_path: str, obj_name: str):
@@ -250,60 +268,56 @@ def setup_lighting_and_render_preview(output_render_path: str, target_mesh):
     import bpy
     from mathutils import Vector
 
-    print(f"[Blender Export] Rendering neutral 3-point lighting preview...")
+    print(f"[Blender Export] Rendering neutral studio lighting preview...")
 
-    # Calculate center and bounds
-    bbox = [target_mesh.matrix_world @ Vector(corner) for corner in target_mesh.bound_box]
-    center = sum(bbox, Vector((0, 0, 0))) / 8.0
-    height = max(p.y for p in bbox) - min(p.y for p in bbox)
+    try:
+        # Calculate center and bounds
+        bbox = [target_mesh.matrix_world @ Vector(corner) for corner in target_mesh.bound_box]
+        center = sum(bbox, Vector((0, 0, 0))) / 8.0
+        height = max(p.y for p in bbox) - min(p.y for p in bbox)
 
-    # 1. Camera: positioned in front of face along -Y looking at center
-    cam_data = bpy.data.cameras.new("Preview_Camera")
-    cam_data.lens = 50.0  # Portrait lens
-    cam_obj = bpy.data.objects.new("Preview_Camera", cam_data)
-    bpy.context.scene.collection.objects.link(cam_obj)
-    bpy.context.scene.camera = cam_obj
+        # 1. Camera: positioned in front of face along -Y looking at center
+        cam_data = bpy.data.cameras.new("Preview_Camera")
+        cam_data.lens = 50.0  # Portrait lens
+        cam_obj = bpy.data.objects.new("Preview_Camera", cam_data)
+        bpy.context.scene.collection.objects.link(cam_obj)
+        bpy.context.scene.camera = cam_obj
 
-    cam_dist = height * 2.2
-    cam_obj.location = Vector([center.x, center.y - cam_dist, center.z + height * 0.05])
-    # Look at target
-    direction = center - cam_obj.location
-    rot_quat = direction.to_track_quat('-Z', 'Y')
-    cam_obj.rotation_euler = rot_quat.to_euler()
+        cam_dist = height * 2.2
+        cam_obj.location = Vector([center.x, center.y - cam_dist, center.z + height * 0.05])
+        direction = center - cam_obj.location
+        rot_quat = direction.to_track_quat('-Z', 'Y')
+        cam_obj.rotation_euler = rot_quat.to_euler()
 
-    # 2. Key Light (Warm, 45 deg right, high)
-    key_light_data = bpy.data.lights.new(name="Key_Light", type='POINT')
-    key_light_data.energy = 450.0
-    key_light_data.color = (1.0, 0.96, 0.92)
-    key_light = bpy.data.objects.new("Key_Light", key_light_data)
-    key_light.location = Vector([center.x + height * 1.0, center.y - height * 1.5, center.z + height * 1.0])
-    bpy.context.scene.collection.objects.link(key_light)
+        # 2. Key Light
+        key_light_data = bpy.data.lights.new(name="Key_Light", type='POINT')
+        key_light_data.energy = 450.0
+        key_light = bpy.data.objects.new("Key_Light", key_light_data)
+        key_light.location = Vector([center.x + height * 1.0, center.y - height * 1.5, center.z + height * 1.0])
+        bpy.context.scene.collection.objects.link(key_light)
 
-    # 3. Fill Light (Cool, 45 deg left, softer)
-    fill_light_data = bpy.data.lights.new(name="Fill_Light", type='POINT')
-    fill_light_data.energy = 180.0
-    fill_light_data.color = (0.90, 0.94, 1.0)
-    fill_light = bpy.data.objects.new("Fill_Light", fill_light_data)
-    fill_light.location = Vector([center.x - height * 1.0, center.y - height * 1.2, center.z + height * 0.3])
-    bpy.context.scene.collection.objects.link(fill_light)
+        # 3. Fill Light
+        fill_light_data = bpy.data.lights.new(name="Fill_Light", type='POINT')
+        fill_light_data.energy = 180.0
+        fill_light = bpy.data.objects.new("Fill_Light", fill_light_data)
+        fill_light.location = Vector([center.x - height * 1.0, center.y - height * 1.2, center.z + height * 0.3])
+        bpy.context.scene.collection.objects.link(fill_light)
 
-    # 4. Rim Light (Backlight separating silhouette)
-    rim_light_data = bpy.data.lights.new(name="Rim_Light", type='POINT')
-    rim_light_data.energy = 600.0
-    rim_light_data.color = (1.0, 1.0, 1.0)
-    rim_light = bpy.data.objects.new("Rim_Light", rim_light_data)
-    rim_light.location = Vector([center.x, center.y + height * 1.5, center.z + height * 1.2])
-    bpy.context.scene.collection.objects.link(rim_light)
+        # 4. Fast Workbench render settings (no Cycles CPU compilation overhead)
+        scene = bpy.context.scene
+        scene.render.engine = 'BLENDER_WORKBENCH'
+        if hasattr(scene, 'display'):
+            scene.display.shading.light = 'STUDIO'
+            scene.display.shading.color_type = 'MATERIAL'
+        scene.render.resolution_x = 512
+        scene.render.resolution_y = 512
+        scene.render.filepath = str(Path(output_render_path).resolve())
+        scene.render.image_settings.file_format = 'PNG'
 
-    # Render settings
-    scene = bpy.context.scene
-    scene.render.resolution_x = 512
-    scene.render.resolution_y = 512
-    scene.render.filepath = str(Path(output_render_path).resolve())
-    scene.render.image_settings.file_format = 'PNG'
-
-    bpy.ops.render.render(write_still=True)
-    print(f"[Blender Export] Saved preview render to: {Path(output_render_path).name}")
+        bpy.ops.render.render(write_still=True)
+        print(f"[Blender Export] Saved preview render to: {Path(output_render_path).name}")
+    except Exception as e:
+        print(f"[Blender Export Warning] Headless render skipped ({e})")
 
 
 def export_fbx_pipeline(args):
@@ -398,8 +412,8 @@ def export_fbx_pipeline(args):
         primary_bone_axis='Y',
         secondary_bone_axis='X',
         bake_anim=False,
-        path_mode='COPY',
-        embed_textures=True
+        path_mode='AUTO',
+        embed_textures=False
     )
     print(f"[Blender Export] Successfully generated UE5 Live Link FBX: {out_path.name}")
 

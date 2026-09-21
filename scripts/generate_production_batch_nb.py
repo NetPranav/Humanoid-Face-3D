@@ -249,8 +249,8 @@ for subj_name, s_info in subjects.items():
     elapsed = time.time() - t0
     
     print(f"✅ {subj_name.upper()} completed in {elapsed:.1f}s.")
-    print(f"   OBJ: {Path(res['obj_path']).name}")
-    print(f"   FBX: {Path(res.get('fbx_path', 'none')).name}")
+    fbx_display = Path(res['fbx_path']).name if res.get('fbx_path') else 'None'
+    print(f"   FBX: {fbx_display}")
     print(f"   Manifest: {Path(res['manifest_path']).name}")
     production_results[subj_name] = res
 

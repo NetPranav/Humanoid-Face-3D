@@ -58,7 +58,7 @@ KERNEL_CONFIGS = {
         "title": "Phase Production Cloud Batch UE5",
         "notebook": "phase_production_cloud_batch.ipynb",
         "enable_gpu": True,
-        "datasets": ["nightshowdown/flame-model", "nightshowdown/mica-pretrained"],
+        "datasets": ["nightshowdown/flame-model"],
         "kernel_sources": ["nightshowdown/phase-3-detail-gan-train"],
     },
 }

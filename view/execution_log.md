@@ -205,3 +205,17 @@ Kernel version 1 successfully pushed.  Please check progress at https://www.kagg
 `[2026-09-21 13:03:12]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
 `[2026-09-21 13:04:26]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.ERROR"
 `[2026-09-21 13:04:33]` 📥 Pulling output for `nightshowdown/phase-production-cloud-batch-ue5` to /Users/pranav/Project Folder/3d Model /outputs/phase-production-cloud-batch-ue5...
+`[2026-09-21 13:10:50]` 🚀 Packaging kernel `nightshowdown/phase-production-cloud-batch-ue5` (GPU: True, Internet: True)
+`[2026-09-21 13:10:52]` ✅ Successfully pushed `nightshowdown/phase-production-cloud-batch-ue5` to Kaggle cloud!
+The following are not valid dataset sources and could not be added to the kernel: ['nightshowdown/mica-pretrained']
+Kernel version 2 successfully pushed.  Please check progress at https://www.kaggle.com/code/nightshowdown/phase-production-cloud-batch-ue5
+`[2026-09-21 13:10:56]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-21 13:11:08]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-21 13:12:17]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-21 13:13:31]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-21 13:14:39]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-21 13:15:47]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-21 13:16:58]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-21 13:18:05]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-21 13:19:13]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.ERROR"
+`[2026-09-21 13:19:17]` 📥 Pulling output for `nightshowdown/phase-production-cloud-batch-ue5` to /Users/pranav/Project Folder/3d Model /outputs/phase-production-cloud-batch-ue5...

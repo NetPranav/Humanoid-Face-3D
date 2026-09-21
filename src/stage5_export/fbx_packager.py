@@ -59,7 +59,7 @@ class FBXPackager:
         normal_map: Optional[Union[str, Path]] = None,
         displacement_map: Optional[Union[str, Path]] = None,
         render_preview: Optional[Union[str, Path]] = None,
-        timeout_seconds: int = 180,
+        timeout_seconds: int = 300,
     ) -> Dict[str, Any]:
         """
         Packages production FBX asset via headless Blender.
