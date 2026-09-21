@@ -1,6 +1,12 @@
 from __future__ import annotations
-import copy, time, os, json
+import copy, time, os, json, sys
 import argparse
+from pathlib import Path
+
+# Ensure repository root is on sys.path for standalone and torchrun execution
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 try:
     import torch

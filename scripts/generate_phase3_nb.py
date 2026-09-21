@@ -129,8 +129,10 @@ if stats_file.exists():
 
     # Cell 4: Multi-GPU / DDP Training Launch
     c4_code = """# Cell 4: Launch Detail GAN Training with Quota Guards & Resumability
+import os
 import subprocess
 import torch
+from pathlib import Path
 
 n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
 checkpoint_dir = Path("checkpoints/stage3_detail")
@@ -147,9 +149,12 @@ train_cmd = [
     "--batch_size", "4"
 ]
 
+env = os.environ.copy()
+env["PYTHONPATH"] = f"{os.getcwd()}:{env.get('PYTHONPATH', '')}"
+
 print("--- Launching Detail GAN Training ---")
 print("Command:", " ".join(train_cmd))
-subprocess.run(train_cmd, check=True)
+subprocess.run(train_cmd, env=env, check=True)
 print("Training execution completed successfully.")
 """
     compile(c4_code, "<cell_4>", "exec")
