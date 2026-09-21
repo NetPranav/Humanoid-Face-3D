@@ -1,0 +1,13 @@
+TO: mica@tue.mpg.de
+SUBJECT: [MICA Training Dataset Request] Research Access
+
+Dear MICA Research Team (Max Planck Institute for Intelligent Systems),
+
+I am writing to inquire about access to the unified MICA 3D training dataset registrations (2,315 subjects in FLAME topology) as described in your ECCV 2022 paper "Towards Metrical Reconstruction of Human Faces".
+
+We have already acquired the FLAME 2020 foundation model and are working on metric shape regression. We would be grateful to access the unified FLAME registration parameters and instructions.
+
+Thank you very much.
+
+Best regards,
+Pranav

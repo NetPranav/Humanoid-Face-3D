@@ -1,0 +1,16 @@
+TO: 3dfacedb@gmail.com
+SUBJECT: [Stirling/ESRC 3D Face Database Request] Research Access
+
+Dear Stirling/ESRC 3D Face Database Administrator,
+
+I would like to request access to the Stirling/ESRC 3D Face Database (conformed and unconformed 3D OBJ head scans) for academic research purposes.
+
+Project: Humanoid-Face-3D (Multi-view 3D Facial Reconstruction & Rigging)
+Purpose: Academic research and benchmark evaluation of 3D facial shape estimation.
+
+I confirm that the data will be used solely for non-commercial academic research and will not be redistributed. I also agree to offer any reciprocal conformed data back to the database as requested by the usage terms.
+
+Please find attached the completed and signed agreement.
+
+Kind regards,
+Pranav

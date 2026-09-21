@@ -1,0 +1,18 @@
+TO: nju3dv@nju.edu.cn
+SUBJECT: [FaceScape Dataset Request] Academic Research Access
+
+Dear FaceScape Research Team (Nanjing University),
+
+I am writing to formally request academic research access to the FaceScape 3D dataset (multi-view 4K portraits, registered 3D head meshes, and bilinear models) for our non-commercial research project on identity-preserving 3D humanoid head reconstruction.
+
+Project Title: Humanoid-Face-3D: Identity-Preserving 3D Geometry Pipeline
+Institution / Organization: Independent Academic / Open Research
+Intended Use: Non-commercial evaluation of 3D facial shape regression and high-frequency wrinkle/pore synthesis.
+
+I have reviewed the FaceScape License Agreement, agree strictly to adhere to all terms (non-commercial use, no redistribution, attribution in research publications), and have attached our signed agreement form.
+
+Thank you very much for your time and for providing this valuable resource to the computer vision community.
+
+Sincerely,
+Pranav
+Humanoid-Face-3D Project

@@ -1,0 +1,14 @@
+TO: micc@unifi.it
+SUBJECT: [Florence 2D/3D Face Dataset Request] Academic Research Access
+
+Dear MICC Florence Face Research Team,
+
+I am requesting access to the Florence 2D/3D Face Dataset (structured-light 3D head meshes and multi-camera video sequences) for non-commercial academic research in 3D face alignment and geometric shape reconstruction.
+
+We confirm strict compliance with the dataset licensing terms (academic research only, no commercial exploitation, proper citation in publications).
+
+Thank you for your assistance.
+
+Sincerely,
+Pranav
+Humanoid-Face-3D
