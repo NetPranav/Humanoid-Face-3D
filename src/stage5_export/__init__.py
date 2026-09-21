@@ -38,6 +38,7 @@ from src.stage5_export.stylize import (
     FaceStylizer
 )
 from src.stage5_export.exporter import Stage5Exporter
+from src.stage5_export.fbx_packager import FBXPackager
 
 __all__ = [
     "SparseMatrixCSR",
@@ -67,5 +68,6 @@ __all__ = [
     "resolve_stylization_params",
     "FaceStylizer",
     "Stage5Exporter",
+    "FBXPackager",
 ]
 

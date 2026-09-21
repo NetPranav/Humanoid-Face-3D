@@ -150,39 +150,46 @@ class Stage5Exporter:
             for face in active_faces + 1:
                 fp.write(f"f {face[0]} {face[1]} {face[2]}\n")
 
-        # 6. Headless Blender FBX Export (if Blender is present in system path)
+        # 6. Headless Blender Production FBX Packaging (Mesh + Armature + ARKit-52 + Hair Cards + LODs + Materials)
         fbx_output_path = out_path / "head_mesh_ue5_livelink.fbx"
-        blender_executable = shutil.which("blender")
-        has_fbx = False
+        fbx_manifest = {}
 
-        if export_fbx and blender_executable:
-            print(f"[Stage 5] Headless Blender found ({blender_executable}). Packaging UE5 Live Link FBX...")
-            blender_script = Path(__file__).resolve().parent.parent.parent / "scripts" / "blender_export.py"
-            cmd = [
-                blender_executable,
-                "--background",
-                "--python", str(blender_script),
-                "--",
-                str(base_obj_path.resolve()),
-                str(bs_json_path.resolve()),
-                str(fbx_output_path.resolve()),
-            ]
-            if armature_path:
-                cmd.extend(["--armature", armature_path])
+        if export_fbx:
+            from src.stage5_export.fbx_packager import FBXPackager
 
-            try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-                if res.returncode == 0:
-                    print(f"[Stage 5] Successfully exported FBX: {fbx_output_path.name}")
-                    has_fbx = True
-                else:
-                    print(f"[Stage 5 Warning] Blender export returned error code {res.returncode}:\n{res.stderr[:300]}")
-            except Exception as e:
-                print(f"[Stage 5 Warning] Could not execute Blender subprocess: {e}")
-        elif export_fbx:
-            print("[Stage 5 Notice] Blender binary not detected in PATH. OBJ, ARKit JSON, and Rig assets saved. "
-                  "FBX export can be generated via: "
-                  f"blender --background --python scripts/blender_export.py -- {base_obj_path.name} {bs_json_path.name} {fbx_output_path.name}")
+            lod_manifest_file = out_path / "lod_manifest.json"
+            if lod_manifest:
+                with open(lod_manifest_file, "w") as fp:
+                    json.dump(lod_manifest, fp, indent=2)
+
+            hair_cards_obj = None
+            hair_skinning_json = None
+            if facial_hair_manifest and isinstance(facial_hair_manifest, dict):
+                cards_info = facial_hair_manifest.get("hair_cards", {}).get("files", {})
+                hair_cards_obj = cards_info.get("cards_obj")
+                hair_skinning_json = cards_info.get("skinning_json")
+
+            normal_map_file = None
+            disp_map_file = None
+            if detail_maps and isinstance(detail_maps, dict):
+                normal_map_file = detail_maps.get("normal_png") or detail_maps.get("normal_map") or detail_maps.get("stubble_normal")
+                disp_map_file = detail_maps.get("displacement_png") or detail_maps.get("displacement_map") or detail_maps.get("stubble_displacement")
+
+            render_preview_path = out_path / "preview_render.png"
+
+            packager = FBXPackager()
+            fbx_manifest = packager.package_fbx(
+                mesh_obj=base_obj_path,
+                blendshapes_json=bs_json_path,
+                output_fbx=fbx_output_path,
+                armature_json=armature_path,
+                lod_manifest=str(lod_manifest_file) if lod_manifest else None,
+                hair_cards_obj=hair_cards_obj,
+                hair_skinning_json=hair_skinning_json,
+                normal_map=normal_map_file,
+                displacement_map=disp_map_file,
+                render_preview=render_preview_path,
+            )
 
         # 7. Package complete export manifest
         manifest = {
@@ -190,7 +197,8 @@ class Stage5Exporter:
             "neutral_base_obj": str(base_obj_path.resolve()),
             "blendshapes_json": str(bs_json_path.resolve()),
             "armature_json": armature_path,
-            "fbx_file": str(fbx_output_path.resolve()) if has_fbx else None,
+            "fbx_file": fbx_manifest.get("fbx_file"),
+            "fbx_packaging": fbx_manifest,
             "lods": lod_manifest,
             "stylization": stylization_info,
             "detail_maps": detail_maps,
