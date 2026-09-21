@@ -29,16 +29,17 @@
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  ✅ STEP 1: SOFTWARE PIPELINE (COMPLETE)                                     │
 │  All stages 0–8 + Stage 5 export are built, tested, and pushed to GitHub.   │
-│  Commit: 1d1fd7a on main                                                     │
+│  Commit: 170b480 on main                                                     │
 └─────────────────────────────────────────┬────────────────────────────────────┘
                                           │
                                           ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  🔄 STEP 2: PHASE 3 DEEP — Overnight Skin Pore GAN Training                 │
+│  🔄 STEP 2: PHASE 3 DEEP — Skin Pore GAN Training (GEOMETRY)                │
 │  Currently RUNNING on Kaggle (nightshowdown/phase-3-deep-detail-gan-train)  │
 │  • 40,000 steps, 1024×1024, Dual Tesla T4, ~9.5 hours                       │
 │  • Resumes from checkpoint_latest.pt                                         │
 │  • Unlocks: Sub-millimeter skin pores, sebaceous bumps, epidermal grain     │
+│  • Output: ema_generator.pt → models_cache/stage3_detail/                    │
 │  • Command:                                                                  │
 │    torchrun --nproc_per_node=2 src/stage3_detail/trainer.py \                │
 │      --data_dir <uv_dataset_1024> --total_steps 40000 --batch_size 4 \      │
@@ -47,37 +48,45 @@
                                           │
                                           ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  ⏹ STEP 3: CLOUD BATCH PRODUCTION RUN (Full Textured Pipeline)              │
-│  Once Phase 3 Deep finishes, run all subjects through the FULL pipeline:    │
-│  • Subjects: carell, connelly, justin, lawrence + user portraits            │
-│  • Produces per subject:                                                     │
-│    - head_mesh_ue5_livelink.fbx (skeleton + ARKit-52 + LODs)                │
-│    - textures/albedo_diffuse.png (2048² delighted skin)                      │
-│    - textures/roughness_map.png (2048² anatomical zones)                     │
-│    - textures/cavity_ao_map.png (2048² pore-coupled AO)                     │
-│    - textures/sss_thickness_map.png (2048² SSS)                              │
-│    - head_displacement_16bit.png (1024² skin pores)                          │
-│    - head_normal_map.png (1024² tangent normals)                             │
-│  • Estimated: ~15 minutes on Kaggle GPU                                      │
-└─────────────────────────────────────────┬────────────────────────────────────┘
-                                          │
-                                          ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  ⏹ STEP 4: DELIGHTING FINE-TUNE (Optional — 4 hours Kaggle)                 │
-│  Fine-tune the Stage 7 DelightUNet on CelebA-HQ 1024² images to improve    │
-│  albedo quality from "good (DECA pre-trained)" to "great (custom-tuned)".   │
-│  • Dataset: 30,000 CelebA-HQ images projected onto FLAME UV                 │
+│  ⏹ STEP 3: DELIGHTING FINE-TUNE — Albedo Training (TEXTURE)                 │
+│  Train the Stage 7 DelightUNet so the texture quality is film-grade.        │
+│  • Fine-tune on 30,000 CelebA-HQ 1024² images projected onto FLAME UV      │
 │  • Estimated: ~4 hours on Kaggle Dual T4                                     │
-│  • Skip this if DECA albedo quality is already sufficient.                   │
+│  • Improves: Albedo quality from "good (DECA)" → "great (custom-tuned)"    │
+│  • Output: delight_unet.pt → models_cache/stage7_delight/                    │
+│  • Why before production batch: So the final textured output uses the        │
+│    best possible lighting-removed skin texture, not the generic fallback.   │
 └─────────────────────────────────────────┬────────────────────────────────────┘
                                           │
                                           ▼ (Data-Dependent)
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  ⏹ STEP 5: PHASE 2 DEEP — MICA Identity Supervised Fine-Tuning             │
-│  Requires attaching external registered 3D scan datasets (FaceScape/LYHM).  │
-│  • Prerequisites: ≥100 registered 3D scan meshes with ground-truth β        │
+│  ⏹ STEP 4: PHASE 2 DEEP — MICA Identity Fine-Tuning (SHAPE)                │
+│  Supervised fine-tune of MICA on registered 3D scan datasets so the          │
+│  base head shape is as accurate as possible before final production run.    │
+│  • Requires: ≥100 registered 3D scans with ground-truth β (FaceScape/LYHM) │
 │  • Estimated: 4–6 hours on Kaggle Dual T4                                    │
-│  • Improves: Identity accuracy for diverse demographics                      │
+│  • Improves: Identity accuracy for diverse demographics (jaw, cheeks, nose) │
+│  • Output: mica_finetuned.pt → models_cache/mica/                            │
+│  • Skip if: External scan datasets are not yet acquired.                     │
+└─────────────────────────────────────────┬────────────────────────────────────┘
+                                          │
+                                          ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  ⏹ STEP 5: FINAL PRODUCTION BATCH RUN (Best Models → Best Output)           │
+│  Run ALL subjects through the fully trained pipeline with every model       │
+│  at peak quality — pore-level geometry + film-grade textures + accurate     │
+│  identity shape. This is the final deliverable generation step.             │
+│  • Subjects: carell, connelly, justin, lawrence + user portraits            │
+│  • Uses: Best Phase 3 GAN + Best Delighting + Best MICA (all trained)       │
+│  • Produces per subject:                                                     │
+│    - head_mesh_ue5_livelink.fbx (skeleton + ARKit-52 + LODs)                │
+│    - textures/albedo_diffuse.png (2048² film-grade delighted skin)           │
+│    - textures/roughness_map.png (2048² anatomical zones)                     │
+│    - textures/cavity_ao_map.png (2048² pore-coupled AO)                     │
+│    - textures/sss_thickness_map.png (2048² SSS)                              │
+│    - head_displacement_16bit.png (1024² sub-mm skin pores)                   │
+│    - head_normal_map.png (1024² tangent normals)                             │
+│  • Estimated: ~15 minutes on Kaggle GPU                                      │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
