@@ -113,9 +113,15 @@ class HairCardGenerator:
         card_normals_list = []
         card_skinning_list = []
 
-        # Geometry parameters
-        card_len = cfg.card_length_mm
-        card_w = cfg.card_width_mm
+        # Check mesh coordinate scale:
+        # FLAME canonical mesh coordinates are in meters (extents ~0.15 - 0.25 m).
+        # Synthetic test meshes or metric millimeter meshes have extents ~100 - 200 mm.
+        mesh_extent = float(np.max(np.abs(vertices)))
+        unit_scale = 0.001 if mesh_extent < 5.0 else 1.0
+
+        # Geometry parameters scaled to match mesh units
+        card_len = cfg.card_length_mm * unit_scale
+        card_w = cfg.card_width_mm * unit_scale
         curvature = cfg.card_curvature
 
         vertex_offset = 0

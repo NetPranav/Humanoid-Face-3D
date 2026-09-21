@@ -66,10 +66,9 @@ def get_anatomical_region_weights(vertices: np.ndarray) -> Dict[str, np.ndarray]
     y_norm = (y - y_min) / y_range
     z_norm = (z - z_min) / z_range
 
-    # 1. Neck boundary mask: lowest 20% Y coordinate and posterior Z
-    is_neck = (y_norm < 0.22) | (z_norm < 0.25)
-    neck_weight = np.clip(1.0 - (y_norm / 0.22), 0.0, 1.0)
-    facial_valid_weight = 1.0 - neck_weight
+    # 1. Neck boundary mask: strictly lowest 20% Y coordinate must be bitwise 0.0
+    # Enforces Neck Seam Contract: delta v == 0.0 for y_norm <= 0.20
+    facial_valid_weight = np.clip((y_norm - 0.20) / 0.05, 0.0, 1.0)
 
     # 2. Jaw region: lower 45% Y, anterior Z
     jaw_weight = np.clip((0.45 - y_norm) / 0.35, 0.0, 1.0) * np.clip((z_norm - 0.3) / 0.5, 0.0, 1.0)

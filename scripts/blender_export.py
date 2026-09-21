@@ -383,7 +383,11 @@ def export_fbx_pipeline(args):
 
     # 7. Render Preview (if requested)
     if args.render_preview:
+        if hair_mesh:
+            hair_mesh.hide_render = True
         setup_lighting_and_render_preview(args.render_preview, head_mesh)
+        if hair_mesh:
+            hair_mesh.hide_render = False
 
     # 8. Export Main UE5 Live Link FBX
     out_path = Path(args.output)
