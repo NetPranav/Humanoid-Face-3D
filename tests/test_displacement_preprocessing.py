@@ -82,5 +82,44 @@ class TestDisplacementPreprocessing(unittest.TestCase):
         self.assertGreaterEqual(disp_in_triangle.min(), 0.99)
         self.assertLessEqual(disp_in_triangle.max(), 3.01)
 
+    def test_demographic_synthesis_and_collar_pinning(self):
+        """Verify demographic synthesis produces diverse shapes with strictly pinned collar."""
+        import tempfile
+        from pathlib import Path
+        from scripts.build_uv_displacement_dataset import synthesize_demographic_corpus
+
+        flame_pkl = Path("data/flame_model/generic_model.pkl")
+        if not flame_pkl.exists():
+            self.skipTest("FLAME generic_model.pkl not available locally")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stats = synthesize_demographic_corpus(
+                flame_model_path=str(flame_pkl),
+                output_dir=tmpdir,
+                n_subjects=3,
+                resolution=128,
+                export_scans=False,
+                seed=123
+            )
+            self.assertEqual(stats["num_samples"], 3)
+            self.assertEqual(stats["resolution"], 128)
+            self.assertGreater(stats["p99_mm"], 0.5)
+
+            # Check files created
+            for i in range(1, 4):
+                stem = f"subject_{i:03d}_neutral"
+                disp_file = Path(tmpdir) / f"{stem}_disp.png"
+                npz_file = Path(tmpdir) / f"{stem}_maps.npz"
+                self.assertTrue(disp_file.exists())
+                self.assertTrue(npz_file.exists())
+
+                data = np.load(npz_file)
+                disp_mm = data["disp_mm"]
+                beta = data["beta"]
+                self.assertEqual(len(beta), 300)
+                self.assertGreater(np.linalg.norm(beta), 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()
+

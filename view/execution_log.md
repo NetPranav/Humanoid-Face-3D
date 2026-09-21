@@ -14,6 +14,7 @@
 | **Stage 3 Resolution**| 🟢 Verified | **1024×1024 Ultra-Resolution** (16-bit uint PNG, $p_{99} = 9.045\,\text{mm}$) |
 | **Neck Seam Contract** | 🟢 Strictly Pinned | Collar vertices ($y_{\text{norm}} \le 0.20$) strictly pinned to $\Delta v \equiv 0$ |
 | **Phase 1 Baseline** | 🟢 100% Complete | **157 assets (417.21 MB)** across 4 benchmark subjects verified on disk |
+| **Phase 1 Upgraded Run** | 🟢 100% Complete | **Kaggle T4 GPU (`nightshowdown/phase-1-upgraded-inference-stage-1-5-pixel3dmm`)**: Stage 1.5 Residuals + Pixel3DMM + 4 Stylization Presets (Neutral, Chiseled, Heroic, Gigachad). All 3 gates cleared. |
 | **Stage 1.5 Residual** | 🟢 Verified | Graph convolutional network breaking FLAME linear ceiling with strict collar pinning |
 | **Pixel3DMM Dense** | 🟢 Verified | Dense normal and UV prediction module for contour-anchored FLAME fitting |
 | **Diff Rendering** | 🟢 Verified | Soft silhouette IoU + landmark reprojection losses wired into Stage 1 training |
@@ -28,6 +29,7 @@
 | **v2** | ❌ Error | ~15s | Syntax error in Cell 3 due to unescaped quotes during bash string concatenation. | Built [`scripts/generate_phase1_nb.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/scripts/generate_phase1_nb.py) to syntax-check each cell with Python `compile(..., 'exec')`. |
 | **v3** | ❌ Error | ~47s | PyTorch 2.6 defaulted `weights_only=True`, triggering unpickling failure on MICA NumPy arrays. | Patched [`src/stage1_identity/inference.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_identity/inference.py) and [`src/stage2_expression/encoder.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage2_expression/encoder.py) with `weights_only=False` and `TypeError` fallback. |
 | **v4** | 🟢 **COMPLETE** | **2m 14s** | None. All cells executed cleanly on Kaggle Tesla T4 GPU. | Verified Gate 1 ($\Delta \beta > 4.6$) and Gate 2 ($\Delta v = 0$ collar). Downloaded 157 assets locally. |
+| **v5 (Upgraded)** | 🟢 **COMPLETE** | **2m 20s** | None. Executed on Kaggle Tesla T4 GPU (`nightshowdown/phase-1-upgraded-inference-stage-1-5-pixel3dmm`). | Stage 1.5 Residual Network + Pixel3DMM dense fitting + 4 stylization presets. Cleared Gate 1 ($\Delta \beta \in [4.61, 7.17]$), Gate 2 (collar $\Delta v = 0.000\,\text{mm}$), Gate 3 (target displacement bounds up to $23.3\,\text{mm}$). Downloaded & verified in `outputs/upgraded_inference/`. |
 
 ---
 
@@ -37,7 +39,8 @@
 | :---: | :--- | :--- | :--- | :---: | :---: | :--- |
 | **0** | `job_01` | **Phase 2.5: Geometry Preprocessing 1024²** | [`scripts/build_uv_displacement_dataset.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/scripts/build_uv_displacement_dataset.py) | Kaggle CPU | 🟢 **COMPLETE** | `outputs/uv_displacement_dataset_1024/`<br>• `subject_001_neutral_disp.png`<br>• `subject_001_neutral_norm.png`<br>• `normalization_stats.json` |
 | **1** | `job_02_inference` | **Phase 1: Multi-View Reconstruction Baseline** | [`notebooks/kaggle/build_phase1/phase1_inference_baseline.ipynb`](file:///Users/pranav/Project%20Folder/3d%20Model%20/notebooks/kaggle/build_phase1/phase1_inference_baseline.ipynb) | Kaggle GPU (T4×1) | 🟢 **COMPLETE** | `outputs/phase1_baseline/`<br>• `carell/`, `connelly/`, `justin/`, `lawrence/`<br>• `phase1_preview_grid.png`<br>• 157 files (417.21 MB) |
-| **2** | `job_03_scale_data`| **Phase 2.5: Multi-Subject Scan Dataset** | [`scripts/build_uv_displacement_dataset.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/scripts/build_uv_displacement_dataset.py) | Kaggle CPU | ⏹️ **Queued** | 20–50 subjects with 1024² 16-bit displacement maps for GAN training. |
+| **1b** | `job_02_upgraded` | **Phase 1.5: Upgraded Multi-View Reconstruction** | [`notebooks/kaggle/build_phase1_upgraded/phase1_upgraded_inference.ipynb`](file:///Users/pranav/Project%20Folder/3d%20Model%20/notebooks/kaggle/build_phase1_upgraded/phase1_upgraded_inference.ipynb) | Kaggle GPU (T4×1) | 🟢 **COMPLETE** | `outputs/upgraded_inference/`<br>• 4 subjects with Stage 1.5 residuals<br>• 4 presets (Neutral, Chiseled, Heroic, Gigachad)<br>• `upgraded_preview_grid.png` |
+| **2** | `job_03_scale_data`| **Phase 2.5: Multi-Subject Scan Dataset (Option 3)** | [`scripts/build_uv_displacement_dataset.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/scripts/build_uv_displacement_dataset.py) | Kaggle CPU | 🟡 **Active** | Scaling synthetic demographic scan corpus to 20 subjects with 1024² 16-bit displacement maps. |
 | **3** | `job_04_detail_gan` | **Phase 3: High-Frequency Detail GAN** | [`notebooks/kaggle/phase3_detail_gan_train.ipynb`](file:///Users/pranav/Project%20Folder/3d%20Model%20/notebooks/kaggle/phase3_detail_gan_train.ipynb) | Kaggle GPU (2×T4) | ⏹️ **Queued** | Trained U-Net Generator (`ema_generator.pt`) synthesizing pore-level wrinkles. |
 | **4** | `job_05_finetune` | **Phase 2: Demographic Identity Fine-Tuning** | [`notebooks/kaggle/phase2_identity_finetune.ipynb`](file:///Users/pranav/Project%20Folder/3d%20Model%20/notebooks/kaggle/phase2_identity_finetune.ipynb) | Kaggle GPU (2×T4) | ⏸️ **On Hold** | Supervised MICA checkpoint (requires registered 3D scan FLAME betas). |
 
@@ -104,10 +107,33 @@ Every output artifact produced by the pipeline is cataloged below with its exact
 | `outputs/uv_displacement_dataset_1024/subject_001_neutral_mask.png` | 1024×1024, 1-channel, 8-bit binary PNG | Valid facial UV unwrapping boundary mask; excludes non-face UV islands and prevents loss penalty on seams. |
 | `outputs/uv_displacement_dataset_1024/normalization_stats.json` | JSON format (`scale`: `9.045434`, `mean`: `-0.003926`) | Millimeter de-normalization parameters required at inference time to map uint16 values back to true metric units. |
 
+### Phase 1.5: Upgraded Multi-View Reconstruction (Stage 1.5 + Pixel3DMM + 4 Presets)
+
+* **Execution Driver:** [`notebooks/kaggle/build_phase1_upgraded/phase1_upgraded_inference.ipynb`](file:///Users/pranav/Project%20Folder/3d%20Model%20/notebooks/kaggle/build_phase1_upgraded/phase1_upgraded_inference.ipynb) (Kaggle GPU Tesla T4, 2m 20s)
+* **Generating Modules:**
+  * Master Orchestrator: [`src/pipeline.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/pipeline.py) (`FaceGeoPipeline.run()`)
+  * Pixel3DMM Dense Fitter: [`src/stage1_identity/pixel3dmm_fitter.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_identity/pixel3dmm_fitter.py)
+  * Stage 1.5 Macro-Shape Residual: [`src/stage1_5_residual/residual_net.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_5_residual/residual_net.py)
+  * Stage 5 Exporter & Stylizer: [`src/stage5_export/exporter.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage5_export/exporter.py), [`src/stage5_export/stylize.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage5_export/stylize.py)
+* **Local Delivery:** `outputs/upgraded_inference/` (unpacked from `outputs/kaggle_upgraded_run/upgraded_inference_assets.tar.gz`)
+* **Validation Gate Results:**
+  * **Gate 1 (Identity Divergence):** $\|\beta_a - \beta_b\|_2 \gg 10^{-3}$ across all pairs.
+    * `carell` vs `connelly`: **$4.8511$**
+    * `carell` vs `justin`: **$7.1725$**
+    * `carell` vs `lawrence`: **$7.0147$**
+    * `connelly` vs `justin`: **$5.2351$**
+    * `connelly` vs `lawrence`: **$5.4214$**
+    * `justin` vs `lawrence`: **$4.6134$**
+    * *Identity Beta Norms:* `carell` ($8.87$), `connelly` ($7.31$), `justin` ($7.27$), `lawrence` ($7.58$).
+  * **Gate 2 (Neck Seam Pinning Contract):** Lowest 20% collar vertices ($y_{\text{norm}} \le 0.20$) strictly verified $\Delta v \equiv 0.000000\,\text{mm}$ across all stylized variants.
+  * **Gate 3 (Stylization Range Bounds):** Max displacements: Chiseled ($6.40\,\text{mm}$), Heroic ($11.82\,\text{mm}$), Gigachad ($23.30\,\text{mm}$), achieving target artistic impact without distortion.
+* **Master Visuals:** `outputs/upgraded_inference/upgraded_inference/upgraded_preview_grid.png`
+
 ---
 
 ## 📜 5. Chronological Engineering Milestones
 
+* **`[KAGGLE UPGRADED RUN COMPLETE]`** Executed Phase 1 Upgraded Inference on Kaggle Tesla T4 GPU (`nightshowdown/phase-1-upgraded-inference-stage-1-5-pixel3dmm`, 2m 20s). Enabled Stage 1.5 Macro-Shape Residual Network, Pixel3DMM dense contour fitting, and 4 stylization presets (neutral, chiseled, heroic, gigachad). Verified non-collapse identity divergence ($\Delta \beta \in [4.61, 7.17]$), bitwise collar boundary pinning ($\Delta v \equiv 0.000000\,\text{mm}$), and target stylization bounds ($23.30\,\text{mm}$ max displacement for Gigachad). Downloaded 18 MB archive to `outputs/upgraded_inference/`.
 * **`[PHASE 1 COMPLETE]`** Successfully ran end-to-end Phase 1 Multi-View Reconstruction on Kaggle GPU (Version 4, 2m 14s). Reconstructed 4 benchmark subjects (`carell`, `connelly`, `justin`, `lawrence`), cleared Gate 1 & Gate 2, and downloaded all 157 assets (417.21 MB).
 * **`[PYTORCH 2.6 FIX]`** Fixed PyTorch 2.6 `WeightsUnpickler` exception by adding `weights_only=False` with `TypeError` fallbacks across MICA and SMIRK checkpoint loaders ([`src/stage1_identity/inference.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_identity/inference.py), [`src/stage2_expression/encoder.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage2_expression/encoder.py)).
 * **`[NOTEBOOK COMPILER]`** Created [`scripts/generate_phase1_nb.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/scripts/generate_phase1_nb.py) to compile and verify all Jupyter cells before notebook generation, eliminating string-escaping and JSON parsing bugs.
