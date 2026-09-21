@@ -65,6 +65,7 @@ class Stage5Exporter:
         template_blendshapes: Optional[Dict[str, np.ndarray]] = None,
         export_fbx: bool = True,
         stylization_params: Optional[Union[StylizationParameters, Dict[str, float], str]] = None,
+        detail_maps: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
         Executes the full Stage 5 production export workflow.
@@ -191,6 +192,7 @@ class Stage5Exporter:
             "fbx_file": str(fbx_output_path.resolve()) if has_fbx else None,
             "lods": lod_manifest,
             "stylization": stylization_info,
+            "detail_maps": detail_maps,
             "num_vertices": int(len(active_vertices)),
             "num_triangles": int(len(active_faces)),
             "arkit_blendshapes_count": len(blendshapes),

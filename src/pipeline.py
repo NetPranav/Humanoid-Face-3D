@@ -74,6 +74,26 @@ class FaceGeoPipeline:
             self._stage2 = ExpressionEncoder(str(smirk_ckpt), allow_neutral=True)
         return self._stage2
 
+    def _get_stage3(self):
+        if self._stage3 is None:
+            stage3_cfg = self.cfg.get('stage3', {}) if isinstance(self.cfg, dict) else {}
+            if not stage3_cfg.get('enabled', True):
+                return None
+            try:
+                from src.stage3_detail.inference import DetailSynthesizer
+                ckpt_p = stage3_cfg.get('checkpoint')
+                stats_p = stage3_cfg.get('stats')
+                uv_template_p = stage3_cfg.get('uv_template')
+                self._stage3 = DetailSynthesizer(
+                    checkpoint_path=ckpt_p,
+                    stats_path=stats_p,
+                    uv_template_path=uv_template_p
+                )
+            except (FileNotFoundError, RuntimeError) as e:
+                print(f"[Stage 3 Notice] Detail GAN not initialized: {e}")
+                self._stage3 = None
+        return self._stage3
+
     def run(self, photo_paths: List[str], output_dir: str) -> Dict[str, Any]:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -168,10 +188,30 @@ class FaceGeoPipeline:
         }
 
         # ── Stage 3: Micro-displacement detail synthesis ────────────────────
+        detail_maps = None
         detail_displacement = None
-        if self._stage3 is not None:
-            print("[Stage 3] Synthesizing high-frequency micro-displacement...")
-            # detail_displacement = self._stage3(...)
+        stage3 = self._get_stage3()
+        if stage3 is not None:
+            print("[Stage 3] Synthesizing high-frequency micro-displacement & normal maps...")
+            try:
+                stage3_cfg = self.cfg.get('stage3', {}) if isinstance(self.cfg, dict) else {}
+                res = int(stage3_cfg.get('resolution', 512))
+                id_feats = [d.embedding for d in valid_dets if hasattr(d, 'embedding') and d.embedding is not None]
+                per_view_feats = np.stack(id_feats, axis=0) if id_feats else None
+
+                synth_res = stage3.synthesize(
+                    neutral_vertices=neutral_vertices,
+                    faces=faces,
+                    per_view_feats=per_view_feats,
+                    beta=beta,
+                    psi=expression_psi,
+                    resolution=res
+                )
+                detail_maps = stage3.save_maps(synth_res, output_dir=output_dir, prefix="head")
+                detail_displacement = synth_res['disp_mm']
+                print(f"[Stage 3] Synthesized {res}x{res} 16-bit displacement and normal maps.")
+            except Exception as e:
+                print(f"[Stage 3 Warning] Micro-displacement synthesis failed: {e}")
 
         # ── Stage 5: Export ──────────────────────────────────────────────────
         print("[Stage 5] Exporting clean neutral OBJ and run manifest...")
@@ -179,6 +219,7 @@ class FaceGeoPipeline:
             vertices=neutral_vertices,
             faces=faces,
             displacement=detail_displacement,
+            detail_maps=detail_maps,
             expression_metadata=expression_metadata,
             beta=beta,
             detections=detections,
@@ -194,6 +235,7 @@ class FaceGeoPipeline:
         vertices: np.ndarray,
         faces: np.ndarray,
         displacement: Optional[np.ndarray],
+        detail_maps: Optional[Dict[str, str]],
         expression_metadata: dict,
         beta: np.ndarray,
         detections: list,
@@ -232,7 +274,8 @@ class FaceGeoPipeline:
                 faces=faces,
                 output_dir=output_dir,
                 export_fbx=True,
-                stylization_params=stylize_config
+                stylization_params=stylize_config,
+                detail_maps=detail_maps
             )
         except Exception as e:
             print(f"[Stage 5 Warning] Could not complete full production asset export: {e}")
@@ -246,6 +289,7 @@ class FaceGeoPipeline:
             'vertex_count': int(vertices.shape[0]),
             'face_count': int(faces.shape[0]),
             'has_displacement': displacement is not None,
+            'detail_maps': detail_maps,
             'has_flame': self.flame is not None,
             'has_preview': preview_path.exists(),
             'stage5_production_assets': stage5_manifest,
@@ -253,7 +297,7 @@ class FaceGeoPipeline:
         with open(manifest_path, 'w') as f:
             json.dump(manifest, f, indent=2)
 
-        return {
+        res_dict = {
             'obj_path': str(obj_path),
             'manifest_path': str(manifest_path),
             'preview_path': str(preview_path) if preview_path.exists() else None,
@@ -261,3 +305,6 @@ class FaceGeoPipeline:
             'armature_path': stage5_manifest.get('armature_json'),
             'fbx_path': stage5_manifest.get('fbx_file'),
         }
+        if detail_maps:
+            res_dict.update(detail_maps)
+        return res_dict
