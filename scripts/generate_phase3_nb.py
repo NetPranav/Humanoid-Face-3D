@@ -143,16 +143,25 @@ train_cmd = [
     "src/stage3_detail/trainer.py",
     "--data_dir", str(DATA_DIR),
     "--checkpoint_dir", str(checkpoint_dir),
-    "--resolution", "512",
-    "--checkpoint_every", "250",
-    "--total_steps", "1500",
+    "--resolution", "1024",
+    "--checkpoint_every", "1000",
+    "--total_steps", "40000",
     "--batch_size", "4"
 ]
+
+# Check for existing checkpoint to resume from (pilot run or prior step)
+resume_candidates = (
+    list(Path("/kaggle/input").glob("**/checkpoint_latest.pt")) +
+    list(Path("checkpoints/stage3_detail").glob("checkpoint_latest.pt"))
+)
+if resume_candidates:
+    print(f"Found checkpoint to resume from: {resume_candidates[0]}")
+    train_cmd.extend(["--resume", str(resume_candidates[0])])
 
 env = os.environ.copy()
 env["PYTHONPATH"] = f"{os.getcwd()}:{env.get('PYTHONPATH', '')}"
 
-print("--- Launching Detail GAN Training ---")
+print("--- Launching Detail GAN Deep Studio Training (40k steps, 1024²) ---")
 print("Command:", " ".join(train_cmd))
 subprocess.run(train_cmd, env=env, check=True)
 print("Training execution completed successfully.")
@@ -186,7 +195,7 @@ except TypeError:
 gen.load_state_dict(state_dict)
 gen.eval()
 
-val_ds = UVDisplacementDataset(str(DATA_DIR), is_train=False, target_resolution=512)
+val_ds = UVDisplacementDataset(str(DATA_DIR), is_train=False, target_resolution=1024)
 val_loader = torch.utils.data.DataLoader(val_ds, batch_size=min(4, len(val_ds)), shuffle=False)
 
 with torch.no_grad():
@@ -281,9 +290,14 @@ print(f"\\nAll assets successfully packaged to: {output_archive} ({output_archiv
         json.dump(nb_data, f, indent=1)
     print(f"Created notebook at: {nb_path.resolve()}")
 
+    root_nb_path = Path("notebooks/kaggle/phase3_detail_gan_train.ipynb")
+    with open(root_nb_path, "w") as f:
+        json.dump(nb_data, f, indent=1)
+    print(f"Created notebook at: {root_nb_path.resolve()}")
+
     meta_data = {
-        "id": "nightshowdown/phase-3-detail-gan-train",
-        "title": "Phase 3: Detail GAN Train",
+        "id": "nightshowdown/phase-3-deep-detail-gan-train",
+        "title": "Phase 3: Deep Detail GAN Train",
         "code_file": "phase3_detail_gan_train.ipynb",
         "language": "python",
         "kernel_type": "notebook",
@@ -296,7 +310,8 @@ print(f"\\nAll assets successfully packaged to: {output_archive} ({output_archiv
         ],
         "competition_sources": [],
         "kernel_sources": [
-            "nightshowdown/phase-2-5-geometry-preprocessing-1024"
+            "nightshowdown/phase-2-5-geometry-preprocessing-1024",
+            "nightshowdown/phase-3-detail-gan-train"
         ],
         "model_sources": []
     }

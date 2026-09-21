@@ -1,6 +1,6 @@
 {
-  "id": "nightshowdown/phase-3-detail-gan-train",
-  "title": "Phase 3: Detail GAN Train",
+  "id": "nightshowdown/phase-3-deep-detail-gan-train",
+  "title": "Phase 3: Deep Detail GAN Train",
   "code_file": "phase3_detail_gan_train.ipynb",
   "language": "python",
   "kernel_type": "notebook",
@@ -13,7 +13,8 @@
   ],
   "competition_sources": [],
   "kernel_sources": [
-    "nightshowdown/phase-2-5-geometry-preprocessing-1024"
+    "nightshowdown/phase-2-5-geometry-preprocessing-1024",
+    "nightshowdown/phase-3-detail-gan-train"
   ],
   "model_sources": []
 }

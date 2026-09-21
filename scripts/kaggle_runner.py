@@ -47,11 +47,15 @@ KERNEL_CONFIGS = {
         "datasets": ["nightshowdown/flame-model", "nightshowdown/mica-pretrained"],
     },
     "phase3": {
-        "slug": "phase-3-detail-gan-train",
-        "title": "Phase 3: 1024 Ultra-Detail GAN Training",
+        "slug": "phase-3-deep-detail-gan-train",
+        "title": "Phase 3: Deep Detail GAN Train",
         "notebook": "phase3_detail_gan_train.ipynb",
         "enable_gpu": True,  # 2xT4
-        "datasets": [],
+        "datasets": ["nightshowdown/flame-model"],
+        "kernel_sources": [
+            "nightshowdown/phase-2-5-geometry-preprocessing-1024",
+            "nightshowdown/phase-3-detail-gan-train",
+        ],
     },
     "production_batch": {
         "slug": "phase-production-cloud-batch-ue5",
