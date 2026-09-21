@@ -1,0 +1,30 @@
+{
+  "LOD0": {
+    "mesh_obj": "/kaggle/working/outputs/production_batch/connelly/face_lod0.obj",
+    "blendshapes_json": "/kaggle/working/outputs/production_batch/connelly/blendshapes_lod0.json",
+    "num_vertices": 5023,
+    "num_triangles": 9976,
+    "shape_keys_count": 52
+  },
+  "LOD1": {
+    "mesh_obj": "/kaggle/working/outputs/production_batch/connelly/face_lod1.obj",
+    "blendshapes_json": "/kaggle/working/outputs/production_batch/connelly/blendshapes_lod1.json",
+    "num_vertices": 558,
+    "num_triangles": 1114,
+    "shape_keys_count": 52
+  },
+  "LOD2": {
+    "mesh_obj": "/kaggle/working/outputs/production_batch/connelly/face_lod2.obj",
+    "blendshapes_json": "/kaggle/working/outputs/production_batch/connelly/blendshapes_lod2.json",
+    "num_vertices": 558,
+    "num_triangles": 1114,
+    "shape_keys_count": 52
+  },
+  "LOD3": {
+    "mesh_obj": "/kaggle/working/outputs/production_batch/connelly/face_lod3.obj",
+    "blendshapes_json": "/kaggle/working/outputs/production_batch/connelly/blendshapes_lod3.json",
+    "num_vertices": 134,
+    "num_triangles": 253,
+    "shape_keys_count": 52
+  }
+}

@@ -36,13 +36,36 @@ checkpoints/
 data/flame_model/*
 !data/flame_model/.gitkeep
 !data/test_images/.gitkeep
-outputs/
+data/external/3d_scans/*.obj
+!data/external/3d_scans/reference_photogrammetry/*.obj
+
+# Outputs: Ignore bulky intermediate runs, include production batch & analysis assets
+outputs/*
+!outputs/production_batch_showcase.png
+!outputs/focal_mask_overlay.png
+!outputs/production_batch/
+!outputs/production_batch/**
+!outputs/kaggle_phase3_gan/
+outputs/kaggle_phase3_gan/*
+!outputs/kaggle_phase3_gan/phase-3-detail-gan-train.log
+!outputs/kaggle_phase3_gan/extracted/
+outputs/kaggle_phase3_gan/extracted/*
+!outputs/kaggle_phase3_gan/extracted/validation_preview.png
+!outputs/kaggle_phase3_gan/extracted/normalization_stats.json
+!outputs/uv_displacement_dataset_1024/
+outputs/uv_displacement_dataset_1024/*
+!outputs/uv_displacement_dataset_1024/normalization_stats.json
+!outputs/uv_displacement_dataset_1024/dataset_preview_grid.png
+
 uv_displacement_dataset/
 *.tar
+*.tar.gz
 *.pt
 *.pth
 *.onnx
 *.zip
+*.bin
+*.pkl
 
 # IDE / OS
 .DS_Store

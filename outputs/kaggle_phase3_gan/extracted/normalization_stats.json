@@ -1,0 +1,7 @@
+{
+  "p99_mm": 1.1464593410491943,
+  "resolution": 1024,
+  "num_samples": 20,
+  "storage_format": "16-bit uint PNG [0, 65535]",
+  "formula": "d_norm = clip(d_mm / p99, -1, 1); u16 = round((d_norm + 1) * 0.5 * 65535)"
+}
