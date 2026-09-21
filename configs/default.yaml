@@ -47,6 +47,33 @@ stage5:
   blendshape_standard: arkit52    # Apple ARKit-52 standard blendshape naming and semantics
   export_format: fbx              # UE5 Live Link compatible skeletal mesh FBX
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PBR Texture Engine — Stages 6, 7, 8
+# ═══════════════════════════════════════════════════════════════════════════════
+
+stage6:
+  enabled: true
+  texture_resolution: 2048         # Output texture resolution (1024 or 2048)
+  blend_gamma: 2.0                 # Cosine falloff sharpness for view blending
+  visibility_epsilon: 0.005        # Z-buffer depth epsilon for occlusion testing
+
+stage7:
+  enabled: true
+  delight_model: deca              # 'deca' (pre-trained) or 'custom' (fine-tuned)
+  delight_checkpoint: null         # Path to custom delighting checkpoint (null = auto-discover DECA)
+  inpaint_method: procedural       # 'procedural' (gaussian dilation) or 'lama' (neural)
+  inpaint_iterations: 50           # Dilation iterations for procedural inpainting
+  use_fp16: true                   # FP16 inference for VRAM savings
+
+stage8:
+  enabled: true
+  roughness_t_zone: 0.33           # Base roughness for oily T-zone
+  roughness_cheeks: 0.57           # Base roughness for dry cheeks
+  roughness_lips: 0.22             # Base roughness for glossy lips
+  cavity_strength: 0.35            # Laplacian cavity modulation strength
+  sss_ray_count: 32                # Rays per vertex for SSS thickness estimation
+  sss_normalize: true              # Normalize SSS to [0, 1] range
+
 evaluation:
   arcface_threshold: 0.5          # Minimum cosine similarity for same-identity verification
   now_benchmark: false            # Run NoW benchmark evaluation (MICA target: ~0.90mm median error)

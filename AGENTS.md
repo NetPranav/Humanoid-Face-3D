@@ -6,7 +6,7 @@ This document guides any AI agent resuming or collaborating on the **Humanoid-Fa
 
 ## 1. Project Objective & Architecture
 
-A production-grade, identity-preserving image-to-3D facial geometry reconstruction pipeline that synthesizes an untextured, game-ready humanoid head mesh from 3–5 multi-view portraits.
+A production-grade, identity-preserving image-to-3D **fully textured, PBR-ready humanoid head mesh** reconstruction pipeline that synthesizes a film-grade 3D facial asset from 3–5 multi-view portraits, complete with physically based rendering material maps (albedo, roughness, SSS, cavity/AO, displacement, normal).
 
 ### Pipeline Stages:
 * **Stage 0 (Preprocessing):** InsightFace detection, 5-point alignment, pose estimation, and pre-flight identity/angular validation (`src/stage0_preprocess/`).
@@ -14,7 +14,10 @@ A production-grade, identity-preserving image-to-3D facial geometry reconstructi
 * **Stage 2 (Expression & Pose):** SMIRK regression of 100-D expression ($\psi$) and 15-D pose ($\theta$). **Invariant:** Base mesh is kept in canonical neutral pose ($\psi=0, \theta=0$); expressions are saved as metadata for blendshape targets (`src/stage2_expression/`).
 * **Stage 3 (Micro-Detail GAN):** U-Net Generator with InstanceNorm and MultiView cross-attention + PatchGAN Discriminator with SpectralNorm. Synthesizes 1024×1024 signed 16-bit displacement maps (`src/stage3_detail/`).
 * **Stage 4 (Facial Hair):** Static facial hair geometry and micro-displacement (`src/stage4_facial_hair/`).
-* **Stage 5 (Production Retopology & UE5 Rig):** Sparse barycentric correspondence matrix $W$, ARKit-52 blendshapes with neck boundary pinning ($\Delta v = 0$), 4-tier LOD decimation (LOD0 to LOD3), 5-joint skeletal armature, and headless Blender FBX packaging (`src/stage5_export/`).
+* **Stage 6 (UV Texture Projection):** Multi-view backprojection of input photos onto FLAME UV space with angle-weighted cosine blending and z-buffer visibility testing. Pure math, no GPU (`src/stage6_texture/`).
+* **Stage 7 (AI Delighting + Inpainting):** Encoder-decoder U-Net strips environment lighting from projected textures → clean diffuse albedo. Procedural Gaussian dilation fills unseen UV regions. Supports pre-trained DECA albedo decoder weights (`src/stage7_delight/`).
+* **Stage 8 (PBR Material Stack):** Procedural generation of roughness (anatomical zone-based), cavity/AO (displacement Laplacian), and SSS thickness (opposing-normal ray-march). Pure math, no GPU (`src/stage8_pbr/`).
+* **Stage 5 (Production Retopology & UE5 Rig):** Sparse barycentric correspondence matrix $W$, ARKit-52 blendshapes with neck boundary pinning ($\Delta v = 0$), 4-tier LOD decimation (LOD0 to LOD3), 5-joint skeletal armature, PBR material slot wiring, and headless Blender FBX packaging (`src/stage5_export/`).
 
 ---
 
@@ -30,6 +33,8 @@ A production-grade, identity-preserving image-to-3D facial geometry reconstructi
    In Stage 5, the lowest 20% of vertices (neck boundary collar) must have their delta displacements pinned strictly to zero (`masks['neck_pinning']`) so the exported head never tears when attached to a common torso in Unreal Engine 5.
 5. **Dynamic GPU Topology:**  
    Do not hardcode `--nproc_per_node=2`. Always detect `torch.cuda.device_count()` to gracefully handle single-GPU (P100) or multi-GPU (T4×2) allocations.
+6. **Texture Pipeline Graceful Degradation:**  
+   Stages 6, 7, 8 are config-gated (`stage6.enabled`, etc.). If any texture stage fails or lacks weights, the pipeline must still produce valid untextured geometry. The texture engine NEVER blocks geometry export.
 
 ---
 
@@ -38,4 +43,4 @@ A production-grade, identity-preserving image-to-3D facial geometry reconstructi
 * **GitHub Repository:** [https://github.com/NetPranav/Humanoid-Face-3D](https://github.com/NetPranav/Humanoid-Face-3D)
 * **Branch:** `main`
 * **Kaggle CLI Path:** `/Users/pranav/.local/bin/kaggle`
-* **Local Test Suite:** `python3 -m unittest discover tests` (73 tests passing).
+* **Local Test Suite:** `python3 -m unittest discover tests` (102 tests passing).

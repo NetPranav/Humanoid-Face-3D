@@ -53,6 +53,9 @@ class FaceGeoPipeline:
         self._stage2 = None
         self._stage3 = None
         self._stage4 = None
+        self._stage6 = None
+        self._stage7 = None
+        self._stage8 = None
 
     def _get_stage1(self):
         if self._stage1 is None:
@@ -121,6 +124,63 @@ class FaceGeoPipeline:
                 print(f"[Stage 4 Notice] Facial hair generator not initialized: {e}")
                 self._stage4 = None
         return self._stage4
+
+    def _get_stage6(self):
+        if self._stage6 is None:
+            stage6_cfg = self.cfg.get('stage6', {}) if isinstance(self.cfg, dict) else {}
+            if not stage6_cfg.get('enabled', True):
+                return None
+            try:
+                from src.stage6_texture.projector import MultiViewTextureProjector
+                self._stage6 = MultiViewTextureProjector(
+                    texture_resolution=int(stage6_cfg.get('texture_resolution', 2048)),
+                    blend_gamma=float(stage6_cfg.get('blend_gamma', 2.0)),
+                    visibility_epsilon=float(stage6_cfg.get('visibility_epsilon', 0.005)),
+                )
+            except Exception as e:
+                print(f"[Stage 6 Notice] Texture projector not initialized: {e}")
+                self._stage6 = None
+        return self._stage6
+
+    def _get_stage7(self):
+        if self._stage7 is None:
+            stage7_cfg = self.cfg.get('stage7', {}) if isinstance(self.cfg, dict) else {}
+            if not stage7_cfg.get('enabled', True):
+                return None
+            try:
+                from src.stage7_delight.delight_net import DelightingPipeline
+                self._stage7 = DelightingPipeline(
+                    delight_checkpoint=stage7_cfg.get('delight_checkpoint'),
+                    inpaint_method=stage7_cfg.get('inpaint_method', 'procedural'),
+                    inpaint_iterations=int(stage7_cfg.get('inpaint_iterations', 50)),
+                    use_fp16=stage7_cfg.get('use_fp16', True),
+                )
+            except Exception as e:
+                print(f"[Stage 7 Notice] Delighting pipeline not initialized: {e}")
+                self._stage7 = None
+        return self._stage7
+
+    def _get_stage8(self):
+        if self._stage8 is None:
+            stage8_cfg = self.cfg.get('stage8', {}) if isinstance(self.cfg, dict) else {}
+            if not stage8_cfg.get('enabled', True):
+                return None
+            try:
+                from src.stage8_pbr.material_stack import PBRMaterialStack
+                self._stage8 = PBRMaterialStack(
+                    roughness_config={
+                        'r_t_zone': float(stage8_cfg.get('roughness_t_zone', 0.33)),
+                        'r_cheeks': float(stage8_cfg.get('roughness_cheeks', 0.57)),
+                        'r_lips': float(stage8_cfg.get('roughness_lips', 0.22)),
+                    },
+                    cavity_strength=float(stage8_cfg.get('cavity_strength', 0.35)),
+                    sss_ray_count=int(stage8_cfg.get('sss_ray_count', 32)),
+                    sss_normalize=stage8_cfg.get('sss_normalize', True),
+                )
+            except Exception as e:
+                print(f"[Stage 8 Notice] PBR material stack not initialized: {e}")
+                self._stage8 = None
+        return self._stage8
 
     def run(self, photo_paths: List[str], output_dir: str) -> Dict[str, Any]:
         output_dir = Path(output_dir)
@@ -269,6 +329,26 @@ class FaceGeoPipeline:
             except Exception as e:
                 print(f"[Stage 4 Warning] Facial hair generation failed: {e}")
 
+        # ── PBR TEXTURE ENGINE (Stages 6, 7, 8) ─────────────────────────────
+        texture_maps = {}
+        try:
+            texture_maps = self._run_texture_engine(
+                photos=[cv2.imread(str(p)) for p in photo_paths],
+                detections=detections,
+                vertices=neutral_vertices,
+                faces=faces,
+                detail_maps=detail_maps,
+                output_dir=output_dir,
+            )
+        except Exception as e:
+            print(f"[Texture Engine Warning] PBR texture generation failed: {e}")
+
+        # Merge texture maps into detail maps for export
+        if texture_maps:
+            if detail_maps is None:
+                detail_maps = {}
+            detail_maps.update(texture_maps)
+
         # ── Stage 5: Export ──────────────────────────────────────────────────
         print("[Stage 5] Exporting clean neutral OBJ and run manifest...")
         output_paths = self._export(
@@ -286,6 +366,120 @@ class FaceGeoPipeline:
 
         print(f"[Done] Complete. Output generated at: {output_dir}")
         return output_paths
+
+    def _run_texture_engine(
+        self,
+        photos: List[np.ndarray],
+        detections: list,
+        vertices: np.ndarray,
+        faces: np.ndarray,
+        detail_maps: Optional[Dict[str, str]],
+        output_dir: Path,
+    ) -> Dict[str, str]:
+        """
+        Runs the PBR Texture Engine: Stage 6 → Stage 7 → Stage 8.
+        Returns a dictionary of output texture map file paths.
+        """
+        output_dir = Path(output_dir)
+        texture_maps = {}
+
+        # Load FLAME UV layout (shared across stages)
+        from src.stage3_detail.rasterizer import load_flame_uv_layout, compute_vertex_normals
+        uv_coords, uv_faces = load_flame_uv_layout()
+        vertex_normals = compute_vertex_normals(vertices, faces)
+
+        # ── Stage 6: Multi-View UV Texture Projection ────────────────────
+        stage6 = self._get_stage6()
+        projection_result = None
+        if stage6 is not None:
+            print("[Stage 6] Projecting input photographs onto UV texture space...")
+            try:
+                valid_photos = [p for p in photos if p is not None]
+                valid_dets = [d for d in detections if d is not None]
+                if valid_photos and valid_dets:
+                    projection_result = stage6.project(
+                        photos=valid_photos,
+                        detections=valid_dets,
+                        vertices=vertices,
+                        faces=faces,
+                        vertex_normals=vertex_normals,
+                        uv_coords=uv_coords,
+                        uv_faces=uv_faces,
+                        flame_faces=faces,
+                    )
+                    proj_paths = stage6.save_maps(projection_result, output_dir)
+                    texture_maps.update(proj_paths)
+                    print(f"[Stage 6] Projected texture saved ({stage6.resolution}×{stage6.resolution}).")
+                else:
+                    print("[Stage 6 Warning] No valid photos/detections for texture projection.")
+            except Exception as e:
+                print(f"[Stage 6 Warning] UV texture projection failed: {e}")
+
+        # ── Stage 7: AI Delighting + UV Inpainting ───────────────────────
+        stage7 = self._get_stage7()
+        delight_result = None
+        if stage7 is not None and projection_result is not None:
+            print("[Stage 7] Running delighting and UV inpainting...")
+            try:
+                # Load normal map for delighting conditioning
+                normal_map = None
+                if detail_maps and detail_maps.get('normal_png'):
+                    nm_path = detail_maps['normal_png']
+                    if Path(nm_path).exists():
+                        normal_map = cv2.imread(nm_path, cv2.IMREAD_COLOR)
+                        if normal_map is not None:
+                            normal_map = normal_map.astype(np.float32) / 255.0
+
+                delight_result = stage7.process(
+                    projected_rgb=projection_result['projected_rgb'],
+                    projection_mask=projection_result['projection_mask'],
+                    normal_map=normal_map,
+                )
+                delight_paths = stage7.save_maps(delight_result, output_dir)
+                texture_maps.update(delight_paths)
+                print("[Stage 7] Clean albedo maps saved.")
+            except Exception as e:
+                print(f"[Stage 7 Warning] Delighting failed: {e}")
+
+        # ── Stage 8: PBR Material Stack ──────────────────────────────────
+        stage8 = self._get_stage8()
+        if stage8 is not None:
+            print("[Stage 8] Generating PBR material stack (roughness, cavity, SSS)...")
+            try:
+                # Load displacement map for roughness/cavity derivation
+                disp_map = None
+                if detail_maps:
+                    disp_path = detail_maps.get('displacement_png') or detail_maps.get('stubble_displacement')
+                    if disp_path and Path(disp_path).exists():
+                        disp_raw = cv2.imread(disp_path, cv2.IMREAD_UNCHANGED)
+                        if disp_raw is not None:
+                            if disp_raw.dtype == np.uint16:
+                                disp_map = (disp_raw.astype(np.float32) / 65535.0 * 2.0 - 1.0)
+                            else:
+                                disp_map = disp_raw.astype(np.float32)
+                            if len(disp_map.shape) > 2:
+                                disp_map = disp_map[:, :, 0]
+
+                stage8_cfg = self.cfg.get('stage8', {}) if isinstance(self.cfg, dict) else {}
+                tex_res = int(stage8_cfg.get('resolution', self.cfg.get('stage6', {}).get('texture_resolution', 2048) if isinstance(self.cfg, dict) else 2048))
+
+                pbr_result = stage8.generate(
+                    vertices=vertices,
+                    faces=faces,
+                    vertex_normals=vertex_normals,
+                    uv_coords=uv_coords,
+                    uv_faces=uv_faces,
+                    flame_faces=faces,
+                    displacement_map=disp_map,
+                    resolution=tex_res,
+                )
+                pbr_paths = stage8.save_maps(pbr_result, output_dir)
+                texture_maps.update(pbr_paths)
+                print("[Stage 8] PBR material stack saved (roughness, cavity/AO, SSS).")
+            except Exception as e:
+                print(f"[Stage 8 Warning] PBR material generation failed: {e}")
+
+        return texture_maps
 
     def _export(
         self,

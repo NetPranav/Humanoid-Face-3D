@@ -1,8 +1,8 @@
 # 3D Face Geometry Pipeline — Master Architectural Roadmap
 
-> **Target:** A locally-orchestrated, Kaggle T4×2-trainable face reconstruction pipeline that accepts 3–5 multi-view portraits and synthesizes a game-ready, untextured 3D facial mesh (neutral base mesh + micro-displacement details + ARKit-52 blendshapes + LODs + UE5 Live Link rig).
-> **Quality Bar:** Beat Meshy 7.1's self-reported 59.8% surface-detail score on facial anatomy.
-> **Source Documents:** Derived from `Research.md`, `DOCS/01–03`, `DOCS/00_code_review.md`, and `DOCS/another_guide.md`.
+> **Target:** A locally-orchestrated, Kaggle T4×2-trainable face reconstruction pipeline that accepts 3–5 multi-view portraits and synthesizes a **fully textured, PBR-ready 3D facial mesh** (neutral base mesh + micro-displacement details + PBR texture maps + ARKit-52 blendshapes + LODs + UE5 Live Link rig).
+> **Quality Bar:** Film-grade realism with pore-level detail in both geometry AND texture — realistic enough for VFX production.
+> **Source Documents:** Derived from `Research.md`, `DOCS/01–03`, `DOCS/00_code_review.md`, `DOCS/texture_engine.md`, and `DOCS/another_guide.md`.
 
 ---
 
@@ -47,7 +47,26 @@
 │ • Output: 16-bit signed UV displacement map (wrinkles, pores, stubble) │
 └────────────────────────────────────────────────────────────────────────┘
        │
-       ├─── Neutral Base Mesh + UV Displacement Map + Expression Metadata
+       ├─── Neutral Base Mesh + UV Displacement + Normal Maps + Photos
+       ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ PBR TEXTURE ENGINE (Stages 6, 7, 8)                                   │
+│                                                                        │
+│ Stage 6: Multi-View UV Texture Projection          [PURE MATH]        │
+│ • Backproject photos → UV space via per-view camera matrices          │
+│ • Angle-weighted cosine blending + z-buffer visibility                │
+│                                                                        │
+│ Stage 7: AI Delighting + UV Inpainting             [PRE-TRAINED]      │
+│ • Encoder-decoder U-Net strips lighting → clean diffuse albedo        │
+│ • Procedural Gaussian dilation fills unseen regions                   │
+│                                                                        │
+│ Stage 8: PBR Material Stack                        [PURE MATH]        │
+│ • Roughness (anatomical zones), Cavity/AO (Laplacian), SSS thickness  │
+│                                                                        │
+│ Output: albedo.png, roughness.png, cavity_ao.png, sss.png (2048²)    │
+└────────────────────────────────────────────────────────────────────────┘
+       │
+       ├─── All PBR Texture Maps + Geometry
        ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │ Stage 5: Production Retopology, Rigging & Export                       │
@@ -55,6 +74,7 @@
 │ • 52 ARKit blendshapes via deformation transfer                        │
 │ • 4 LOD levels (LOD0: ~24.5k tris, LOD1: 5k, LOD2: 2k, LOD3: 500)      │
 │ • 5-joint skeletal armature (head, neck, jaw, left eye, right eye)     │
+│ • PBR material slots: Albedo, Roughness, SSS, Cavity/AO, Disp, Normal│
 │ • Headless Blender packaging → Unreal Engine 5 Live Link FBX           │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -82,9 +102,11 @@
 | **Phase 3** | Adversarial High-Frequency Detail Synthesis (Detail GAN) | 3–4 weeks | Kaggle T4×2 (~30h quota) | 🔄 Code Ready / Queued |
 | **Phase 4** | Commercial Licensing & Own-Capture Asset Track | Weeks 1–10 (Parallel) | Business / Legal | ✅ Protocol & Ingest Built |
 | **Phase 5** | Production Retopology, ARKit-52 Rigging & LODs | 4–6 weeks | Local / Kaggle CPU | ✅ Completed |
-| **Phase 6** | Detail Hybridization & Static Facial Hair | 2–3 weeks | Kaggle T4×2 | ⏹ Queued |
-| **Phase 7** | Headless Production Packaging & UE5 Live Link Export | 1–2 weeks | Kaggle CPU (0 quota) | ⏹ Queued |
+| **Phase 6** | Detail Hybridization & Static Facial Hair | 2–3 weeks | Kaggle T4×2 | ✅ Completed |
+| **Phase 7** | Headless Production Packaging & UE5 Live Link Export | 1–2 weeks | Kaggle CPU (0 quota) | ✅ Completed |
 | **Phase 8** | Comprehensive Benchmarking & Quality Assurance | Ongoing | Local / Kaggle CPU | ⏹ Queued |
+| **Phase 9** | PBR Texture Engine (Stages 6, 7, 8) | 1 week | Local / Kaggle CPU | ✅ Completed |
+| **Phase 10** | Delighting Fine-Tune (Optional — CelebA-HQ) | 4 hours | Kaggle T4×2 | ⏹ Queued (Optional) |
 
 ---
 
