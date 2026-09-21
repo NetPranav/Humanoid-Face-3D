@@ -144,18 +144,19 @@ class FaceGeoPipeline:
             try:
                 import torch
                 from src.stage1_5_residual.residual_net import MacroShapeResidualNet
-                res_net = MacroShapeResidualNet(flame_model=self.flame)
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                res_net = MacroShapeResidualNet(flame_model=self.flame).to(device)
                 if residual_ckpt.exists():
-                    ckpt = torch.load(residual_ckpt, map_location='cpu')
+                    ckpt = torch.load(residual_ckpt, map_location=device)
                     res_net.load_state_dict(ckpt.get('state_dict', ckpt), strict=False)
                 res_net.eval()
                 with torch.no_grad():
-                    v_in = torch.from_numpy(neutral_vertices).float().unsqueeze(0)
+                    v_in = torch.from_numpy(neutral_vertices).float().unsqueeze(0).to(device)
                     id_feats = [d.embedding for d in valid_dets if hasattr(d, 'embedding') and d.embedding is not None]
                     if id_feats:
-                        id_feat = torch.from_numpy(np.mean(id_feats, axis=0)).float().unsqueeze(0)
+                        id_feat = torch.from_numpy(np.mean(id_feats, axis=0)).float().unsqueeze(0).to(device)
                     else:
-                        id_feat = torch.zeros(1, 512)
+                        id_feat = torch.zeros(1, 512, device=device)
                     corrected_v, delta_v = res_net(v_in, id_feat)
                     neutral_vertices = corrected_v.squeeze(0).cpu().numpy()
             except Exception as e:
