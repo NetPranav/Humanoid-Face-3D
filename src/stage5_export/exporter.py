@@ -66,6 +66,7 @@ class Stage5Exporter:
         export_fbx: bool = True,
         stylization_params: Optional[Union[StylizationParameters, Dict[str, float], str]] = None,
         detail_maps: Optional[Dict[str, str]] = None,
+        facial_hair_manifest: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Executes the full Stage 5 production export workflow.
@@ -193,6 +194,7 @@ class Stage5Exporter:
             "lods": lod_manifest,
             "stylization": stylization_info,
             "detail_maps": detail_maps,
+            "facial_hair": facial_hair_manifest,
             "num_vertices": int(len(active_vertices)),
             "num_triangles": int(len(active_faces)),
             "arkit_blendshapes_count": len(blendshapes),

@@ -16,7 +16,7 @@ To ensure complete transparency and zero confusion:
 | **Stage 2: Expression & Pose** | 🟢 **100% Done** | Pre-trained SMIRK | Neutral-expression normalization ($\psi=0, \theta=0$). | ❌ No (Canonical neutral invariant is strictly enforced) |
 | **Stage 3: Detail GAN (Pilot)** | 🟢 **100% Done** | **Trained in this repo** (`Job 04`, 1,500 steps on Dual-T4) | **Macro/Meso wrinkles**: Forehead furrows, glabellar frown lines, nasolabial grooves ($\text{std}=0.2373$). | ⚠️ **YES (Phase 3 Deep)**: 40k–50k step overnight run for **sub-millimeter skin pores**. |
 | **Stage 3.5: Detail Pipeline** | 🟢 **100% Done** | `DetailSynthesizer` in `src/pipeline.py` | Exports 16-bit displacement PNG (`disp.png`) and tangent normal map (`normal.png`). | ❌ No (Wiring is complete & tested) |
-| **Stage 4: Facial Hair & Stubble**| ⏳ **In Progress** | Procedural geometry & density maps | Beard stubble micro-displacement and hair card geometry. | ❌ No (Procedural/geometric, no GPU training needed) |
+| **Stage 4: Facial Hair & Stubble**| 🟢 **100% Done** | Procedural geometry & density maps | Beard stubble micro-displacement (`stubble.py`), 3D hair cards (`cards.py`), alpha/normal maps, collar pinning ($\Delta v \equiv 0$). | ❌ No (Procedural/geometric, no GPU training needed) |
 | **Stage 5: Production Rig & FBX** | ⏳ **In Progress** | Procedural armature & quadric decimation | ARKit-52 blendshapes, 4 LOD tiers, 5-joint skeleton, headless Blender FBX. | ❌ No (Geometric export engine) |
 
 ---

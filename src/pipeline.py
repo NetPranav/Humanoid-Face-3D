@@ -39,6 +39,7 @@ class FaceGeoPipeline:
         self._stage1 = None
         self._stage2 = None
         self._stage3 = None
+        self._stage4 = None
 
     def _get_stage1(self):
         if self._stage1 is None:
@@ -93,6 +94,20 @@ class FaceGeoPipeline:
                 print(f"[Stage 3 Notice] Detail GAN not initialized: {e}")
                 self._stage3 = None
         return self._stage3
+
+    def _get_stage4(self):
+        if self._stage4 is None:
+            stage4_cfg = self.cfg.get('stage4', {}) if isinstance(self.cfg, dict) else {}
+            if not stage4_cfg.get('enabled', True):
+                return None
+            try:
+                from src.stage4_facial_hair.generator import FacialHairGenerator
+                neck_collar = float(stage4_cfg.get('neck_collar_threshold', 0.20))
+                self._stage4 = FacialHairGenerator(neck_collar_threshold=neck_collar)
+            except Exception as e:
+                print(f"[Stage 4 Notice] Facial hair generator not initialized: {e}")
+                self._stage4 = None
+        return self._stage4
 
     def run(self, photo_paths: List[str], output_dir: str) -> Dict[str, Any]:
         output_dir = Path(output_dir)
@@ -213,6 +228,34 @@ class FaceGeoPipeline:
             except Exception as e:
                 print(f"[Stage 3 Warning] Micro-displacement synthesis failed: {e}")
 
+        # ── Stage 4: Facial Hair & Stubble Geometry ──────────────────────────
+        facial_hair_manifest = None
+        stage4 = self._get_stage4()
+        if stage4 is not None:
+            stage4_cfg = self.cfg.get('stage4', {}) if isinstance(self.cfg, dict) else {}
+            hair_preset = stage4_cfg.get('preset', 'stubble')
+            hair_res = int(stage4_cfg.get('resolution', 512))
+            try:
+                hair_res_data = stage4.generate(
+                    neutral_vertices=neutral_vertices,
+                    faces=faces,
+                    detail_displacement_mm=detail_displacement,
+                    config=stage4_cfg.get('config', hair_preset),
+                    output_dir=output_dir,
+                    resolution=hair_res,
+                )
+                facial_hair_manifest = hair_res_data.get('manifest')
+                if facial_hair_manifest and facial_hair_manifest.get('stubble', {}).get('generated', False):
+                    detail_displacement = hair_res_data['stubble_displacement_mm']
+                    stubble_maps = facial_hair_manifest['stubble'].get('maps', {})
+                    if stubble_maps:
+                        if detail_maps is None:
+                            detail_maps = {}
+                        detail_maps['stubble_displacement'] = stubble_maps.get('displacement_png')
+                        detail_maps['stubble_normal'] = stubble_maps.get('normal_png')
+            except Exception as e:
+                print(f"[Stage 4 Warning] Facial hair generation failed: {e}")
+
         # ── Stage 5: Export ──────────────────────────────────────────────────
         print("[Stage 5] Exporting clean neutral OBJ and run manifest...")
         output_paths = self._export(
@@ -225,6 +268,7 @@ class FaceGeoPipeline:
             detections=detections,
             photo_paths=photo_paths,
             output_dir=output_dir,
+            facial_hair_manifest=facial_hair_manifest,
         )
 
         print(f"[Done] Complete. Output generated at: {output_dir}")
@@ -240,7 +284,8 @@ class FaceGeoPipeline:
         beta: np.ndarray,
         detections: list,
         photo_paths: list,
-        output_dir: Path
+        output_dir: Path,
+        facial_hair_manifest: Optional[dict] = None,
     ) -> Dict[str, str]:
         obj_path = output_dir / 'head_mesh.obj'
         with open(obj_path, 'w') as f:
@@ -275,7 +320,8 @@ class FaceGeoPipeline:
                 output_dir=output_dir,
                 export_fbx=True,
                 stylization_params=stylize_config,
-                detail_maps=detail_maps
+                detail_maps=detail_maps,
+                facial_hair_manifest=facial_hair_manifest,
             )
         except Exception as e:
             print(f"[Stage 5 Warning] Could not complete full production asset export: {e}")
@@ -292,6 +338,7 @@ class FaceGeoPipeline:
             'detail_maps': detail_maps,
             'has_flame': self.flame is not None,
             'has_preview': preview_path.exists(),
+            'facial_hair': facial_hair_manifest,
             'stage5_production_assets': stage5_manifest,
         }
         with open(manifest_path, 'w') as f:
