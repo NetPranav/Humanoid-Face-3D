@@ -47,41 +47,59 @@ To ensure complete transparency and zero confusion:
 
 ## 🚀 3. The Master Execution Queue (Run Once Pipeline Code Is 100% Finished)
 
-Once Phase 4 (Facial Hair) and Phase 5 (Headless Blender FBX Packager) are built, execute the following deep runs in order:
+The complete software pipeline (Stages 0–8 + Stage 5 Export) is 100% finished and verified with 153 passing tests. Execute the following training runs and production steps in order:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│              STEP 1: FINISH SOFTWARE PIPELINE (CURRENT PROGRESS)                 │
-│  Phase 3.5 (Detail Wiring) [DONE] ──> Phase 4 (Hair) ──> Phase 5 (FBX Rig)       │
+│              STEP 1: FINISH SOFTWARE PIPELINE (COMPLETE ✅)                      │
+│  Stages 0–4 [DONE] ──> Stage 5 Rig/FBX [DONE] ──> Stages 6–8 PBR Texture [DONE]  │
+│  153 unit tests passing. Commit: 240f04a on main                                 │
 └─────────────────────────────────────────┬────────────────────────────────────────┘
                                           │
                                           ▼
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│              STEP 2: LAUNCH PHASE 3 DEEP OVERNIGHT RUN (KAGGLE GPU)              │
-│  Resume from checkpoint_latest.pt for 40,000 steps (~9.5 hours)                  │
+│              STEP 2: LAUNCH PHASE 3 DEEP RUN (KAGGLE GPU — RUNNING 🔄)          │
+│  Resume from checkpoint_latest.pt for 40,000 steps (~9.5 hours on Dual T4)       │
 │  Unlocks: Sub-millimeter skin pores, sebaceous bumps, true epidermal micro-grain │
+│  Output: ema_generator.pt → models_cache/stage3_detail/                          │
 └─────────────────────────────────────────┬────────────────────────────────────────┘
                                           │
                                           ▼
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│              STEP 3: CLOUD BATCH END-TO-END PRODUCTION RUN                       │
-│  Process all 4 subjects through the completed pipeline with deep pore model:     │
-│  Produces: Ready-to-use UE5 FBX files + 4 LODs + ARKit-52 + 1024² Wrinkle Maps   │
+│              STEP 3: DELIGHTING FINE-TUNE — Albedo Training (TEXTURE ⏹)         │
+│  Train Stage 7 DelightUNet on 30,000 CelebA-HQ 1024² images projected onto UV   │
+│  • Estimated: ~4 hours on Kaggle Dual T4                                         │
+│  • Improves: Albedo quality from "good (DECA)" to "film-grade (custom-tuned)"    │
+│  • Output: delight_unet.pt → models_cache/stage7_delight/                        │
+│  • Why before production batch: Train all models FIRST so the final assets       │
+│    benefit from the highest-quality delighting and pore geometry.                │
 └─────────────────────────────────────────┬────────────────────────────────────────┘
                                           │
-                                          ▼ (Optional / Data-Dependent)
+                                          ▼ (Data-Dependent)
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│              STEP 4: PHASE 2 DEEP (MICA IDENTITY SUPERVISED FINE-TUNING)         │
-│  Requires attaching external registered 3D scan datasets (FaceScape / Florence) │
+│              STEP 4: PHASE 2 DEEP — MICA IDENTITY SUPERVISED FINE-TUNING (⏹)     │
+│  Supervised fine-tuning of MICA on registered 3D scan datasets (FaceScape/LYHM)  │
+│  • Requires: ≥100 registered 3D scans with ground-truth β                        │
+│  • Estimated: 4–6 hours on Kaggle Dual T4                                        │
+│  • Improves: Identity accuracy across diverse demographics                       │
+│  • Output: mica_finetuned.pt → models_cache/mica/                                │
+└─────────────────────────────────────────┬────────────────────────────────────────┘
+                                          │
+                                          ▼
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│              STEP 5: FINAL PRODUCTION BATCH RUN (BEST MODELS → BEST ASSETS ⏹)    │
+│  Process all benchmark subjects (carell, connelly, justin, lawrence + user)     │
+│  using all peak models (best Phase 3 GAN + best Delighting + best MICA).         │
+│  Produces: Ready-to-use UE5 FBX (ARKit-52 + LOD0-3) + 7 PBR Texture Maps (2048²) │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🛠️ 4. Exact Specifications for the Deep Training Runs
+## 🛠️ 4. Exact Specifications for Training Runs & Production Batch
 
 ### Deep Run #1: Phase 3 Deep — Studio-Grade Skin Pore GAN Training
-* **When to run:** Immediately after Phase 5 is completed, before going to sleep.
+* **When to run:** Currently running on Kaggle GPU (`nightshowdown/phase-3-deep-detail-gan-train`).
 * **Target Steps:** $40,000 \text{ steps}$
 * **Resolution:** $1024 \times 1024$ (Lossless 16-bit uint PNG)
 * **Estimated Runtime:** $\approx \mathbf{9.5 \text{ hours}}$ on Kaggle Dual Tesla T4 GPUs (safely within Kaggle's 11.5-hour emergency cutoff).
@@ -100,17 +118,13 @@ Once Phase 4 (Facial Hair) and Phase 5 (Headless Blender FBX Packager) are built
 
 ---
 
-### Deep Run #2: End-to-End Cloud Batch Production Run
-* **When to run:** As soon as Deep Run #1 finishes.
-* **Target Subjects:** `carell`, `connelly`, `justin`, `lawrence` (and any new user portraits).
-* **Presets per subject:** Neutral, Chiseled, Heroic, Gigachad.
-* **Estimated Runtime:** $\approx \mathbf{15 \text{ minutes}}$ on Kaggle GPU.
-* **Output Deliverables per Subject:**
-  1. `head_mesh_ue5_livelink.fbx`: Binary FBX with 5-joint skeleton, LBS skin weights, and 52 ARKit blendshapes.
-  2. `face_lod0.obj` through `face_lod3.obj`: 4-tier quadric decimation chain with preserved shape keys.
-  3. `head_displacement_16bit.png`: 1024² 16-bit signed displacement texture.
-  4. `head_normal_map.png`: 1024² tangent-space normal map formatted for UE5 shaders.
-  5. Facial hair and beard stubble layers.
+### Deep Run #2: Delighting U-Net Fine-Tune (CelebA-HQ 1024²)
+* **When to run:** Once Phase 3 Deep finishes, train the texture delighting network to peak quality.
+* **Target Dataset:** 30,000 CelebA-HQ images projected onto FLAME UV space.
+* **Estimated Runtime:** $\approx \mathbf{4 \text{ hours}}$ on Dual T4 GPUs.
+* **Architecture:** 6-level Encoder-Decoder U-Net with skip connections (`src/stage7_delight/model.py`).
+* **Loss Function:** $\mathcal{L}_{\text{delight}} = \|\hat{A} - A_{\text{gt}}\|_1 + \lambda_{\text{perc}} \mathcal{L}_{\text{VGG}}(\hat{A}, A_{\text{gt}}) + \lambda_{\text{chroma}} \mathcal{L}_{\text{chroma}}(\hat{A})$
+* **Output Deliverable:** `models_cache/stage7_delight/delight_unet.pt` providing studio-grade diffuse albedo with zero baked-in shadows or specular hot-spots.
 
 ---
 
@@ -120,11 +134,30 @@ Once Phase 4 (Facial Hair) and Phase 5 (Headless Blender FBX Packager) are built
 * **Estimated Runtime:** $\approx \mathbf{4 \text{ to } 6 \text{ hours}}$ on Dual T4 GPUs.
 * **Loss Function:**
   $$\mathcal{L}_{\text{MICA}} = \|\beta_{\text{pred}} - \beta_{\text{gt}}\|_1 + \lambda_{\text{norm}} \big|\|\beta_{\text{pred}}\| - \|\beta_{\text{gt}}\|\big| + \lambda_{\text{cos}} (1 - \cos(\beta_{\text{pred}}, \beta_{\text{gt}})) + \lambda_{\text{sil}} \mathcal{L}_{\text{diff\_render}}$$
+* **Output Deliverable:** `models_cache/mica/mica_finetuned.pt` fine-tuned for high identity accuracy across diverse demographics.
+
+---
+
+### Production Run: Final End-to-End Batch Generation
+* **When to run:** Once models are trained to peak quality.
+* **Target Subjects:** `carell`, `connelly`, `justin`, `lawrence` (and user portraits).
+* **Presets per subject:** Neutral, Chiseled, Heroic, Gigachad.
+* **Estimated Runtime:** $\approx \mathbf{15 \text{ minutes}}$ on Kaggle GPU.
+* **Output Deliverables per Subject:**
+  1. `head_mesh_ue5_livelink.fbx`: Binary FBX with 5-joint skeleton, LBS skin weights, 52 ARKit blendshapes, and wired PBR material slots.
+  2. `face_lod0.obj` through `face_lod3.obj`: 4-tier quadric decimation chain with preserved shape keys.
+  3. `textures/albedo_diffuse.png`: 2048² film-grade delighted diffuse albedo texture.
+  4. `textures/roughness_map.png`: 2048² micro-roughness map (anatomical zones + pore roughness).
+  5. `textures/cavity_ao_map.png`: 2048² pore-coupled ambient occlusion / cavity map.
+  6. `textures/sss_thickness_map.png`: 2048² subsurface scattering thickness map (ears, nose, lips).
+  7. `head_displacement_16bit.png`: 1024² 16-bit signed displacement texture (sub-mm skin pores).
+  8. `head_normal_map.png`: 1024² tangent-space normal map formatted for UE5 shaders.
+  9. Procedural facial hair & beard stubble geometry cards.
 
 ---
 
 ## 📌 5. Summary Checkpoint
 
-1. **Current Status:** Phase 3.5 is 100% complete and verified with 106 passing unit tests.
-2. **Next Immediate Step:** Build **Phase 4 (Facial Hair & Stubble Engine)** and **Phase 5 (Headless Blender FBX Packager)** to complete the software architecture.
-3. **The Big Run:** Once Phases 4 & 5 are committed, trigger the 9.5-hour **Phase 3 Deep (40,000 steps)** overnight run on Kaggle GPU.
+1. **Software Pipeline:** 100% complete across all 9 stages (Stages 0–8 + Stage 5 Export). Verified with **153 passing unit tests**.
+2. **Current Active Job:** **Phase 3 Deep (40,000 steps)** skin pore GAN is running on Kaggle Dual Tesla T4 GPUs.
+3. **Execution Strategy:** Complete all model training runs (Pore GAN → Delighting U-Net → MICA if scans available) **before** generating the final production batch assets, ensuring the deliverables utilize the absolute best weights across geometry, identity, and PBR textures.
