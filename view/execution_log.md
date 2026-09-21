@@ -194,3 +194,14 @@ Every output artifact produced by the pipeline is cataloged below with its exact
 `[2026-09-21 12:59:10]` 📊 Status `nightshowdown/phase3-detail-gan-train`: 401 Client Error: Unauthorized for url: https://www.kaggle.com/api/v1/kernels/status?username=nightshowdown&kernelslug=phase3-detail-gan-train
 `[2026-09-21 13:00:17]` 📊 Status `nightshowdown/phase3-detail-gan-train`: 403 Client Error: Forbidden for url: https://www.kaggle.com/api/v1/kernels/status?username=nightshowdown&kernelslug=phase3-detail-gan-train
 `[2026-09-21 13:00:25]` 📊 Status `nightshowdown/phase-3-detail-gan-train`: nightshowdown/phase-3-detail-gan-train has status "KernelWorkerStatus.COMPLETE"
+`[2026-09-21 13:01:25]` 🚀 Packaging kernel `nightshowdown/phase-production-cloud-batch-ue5` (GPU: True, Internet: True)
+`[2026-09-21 13:01:26]` ❌ Error pushing `nightshowdown/phase-production-cloud-batch-ue5`:
+/Users/pranav/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+`[2026-09-21 13:01:51]` 🚀 Packaging kernel `nightshowdown/phase-production-cloud-batch-ue5` (GPU: True, Internet: True)
+`[2026-09-21 13:01:53]` ✅ Successfully pushed `nightshowdown/phase-production-cloud-batch-ue5` to Kaggle cloud!
+Kernel version 1 successfully pushed.  Please check progress at https://www.kaggle.com/code/nightshowdown/phase-production-cloud-batch-ue5
+`[2026-09-21 13:01:58]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-21 13:03:12]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.RUNNING"
+`[2026-09-21 13:04:26]` 📊 Status `nightshowdown/phase-production-cloud-batch-ue5`: nightshowdown/phase-production-cloud-batch-ue5 has status "KernelWorkerStatus.ERROR"
+`[2026-09-21 13:04:33]` 📥 Pulling output for `nightshowdown/phase-production-cloud-batch-ue5` to /Users/pranav/Project Folder/3d Model /outputs/phase-production-cloud-batch-ue5...

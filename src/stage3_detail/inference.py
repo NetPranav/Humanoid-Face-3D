@@ -59,7 +59,7 @@ class DetailSynthesizer:
             )
         with open(stats_p, 'r') as f:
             stats = json.load(f)
-        self.p99_mm = float(stats.get('p99_mm', stats.get('scale', 1.1465)))
+        self.p99_mm = float(stats.get('p99_displacement_mm', stats.get('p99_mm', stats.get('scale', 1.1465))))
         self.stats = stats
 
         # 3. Load FLAME UV layout parameterization
@@ -73,35 +73,45 @@ class DetailSynthesizer:
         self.generator.eval()
 
     def _resolve_checkpoint(self, path: Optional[Union[str, Path]]) -> Path:
-        if path:
+        if path and Path(path).exists():
             return Path(path)
         root = Path(__file__).resolve().parent.parent.parent
         candidates = [
+            Path(path) if path else None,
             root / 'models_cache' / 'stage3_detail' / 'ema_generator.pt',
             root / 'models_cache' / 'stage3_detail' / 'generator_latest.pt',
             root / 'checkpoints' / 'stage3_detail' / 'ema_generator.pt',
             root / 'outputs' / 'kaggle_phase3_gan' / 'extracted' / 'ema_generator.pt',
             Path('/kaggle/working/checkpoints/stage3_detail/ema_generator.pt'),
         ]
+        try:
+            candidates.extend(list(Path("/kaggle/input").glob("**/ema_generator.pt")))
+        except Exception:
+            pass
         for c in candidates:
-            if c.exists():
+            if c is not None and c.exists():
                 return c
-        return candidates[0]
+        return Path(path) if path else candidates[1]
 
     def _resolve_stats(self, path: Optional[Union[str, Path]]) -> Path:
-        if path:
+        if path and Path(path).exists():
             return Path(path)
         root = Path(__file__).resolve().parent.parent.parent
         candidates = [
+            Path(path) if path else None,
             root / 'models_cache' / 'stage3_detail' / 'normalization_stats.json',
             root / 'outputs' / 'kaggle_phase3_gan' / 'extracted' / 'normalization_stats.json',
             root / 'outputs' / 'uv_displacement_dataset_1024' / 'normalization_stats.json',
             Path('/kaggle/working/checkpoints/stage3_detail/normalization_stats.json'),
         ]
+        try:
+            candidates.extend(list(Path("/kaggle/input").glob("**/normalization_stats.json")))
+        except Exception:
+            pass
         for c in candidates:
-            if c.exists():
+            if c is not None and c.exists():
                 return c
-        return candidates[0]
+        return Path(path) if path else candidates[1]
 
     def _load_weights(self, path: Path):
         try:

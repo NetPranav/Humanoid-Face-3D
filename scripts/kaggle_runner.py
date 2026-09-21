@@ -55,10 +55,11 @@ KERNEL_CONFIGS = {
     },
     "production_batch": {
         "slug": "phase-production-cloud-batch-ue5",
-        "title": "Production Cloud Batch: Multi-View Reconstruct & UE5 Rig",
+        "title": "Phase Production Cloud Batch UE5",
         "notebook": "phase_production_cloud_batch.ipynb",
         "enable_gpu": True,
-        "datasets": ["nightshowdown/flame-model"],
+        "datasets": ["nightshowdown/flame-model", "nightshowdown/mica-pretrained"],
+        "kernel_sources": ["nightshowdown/phase-3-detail-gan-train"],
     },
 }
 
@@ -117,10 +118,10 @@ def launch_kernel(phase_key: str, user: str = DEFAULT_USER) -> str:
         "enable_gpu": "true" if cfg["enable_gpu"] else "false",
         "enable_tpu": "false",
         "enable_internet": "true",
-        "dataset_sources": cfg["datasets"],
-        "competition_sources": [],
-        "kernel_sources": [],
-        "model_sources": [],
+        "dataset_sources": cfg.get("datasets", []),
+        "competition_sources": cfg.get("competition_sources", []),
+        "kernel_sources": cfg.get("kernel_sources", []),
+        "model_sources": cfg.get("model_sources", []),
     }
 
     meta_file = staging_dir / "kernel-metadata.json"

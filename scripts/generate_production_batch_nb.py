@@ -77,6 +77,8 @@ print("Blender Version:", blender_ver.stdout.splitlines()[0] if blender_ver.stdo
 c4_code = """# Cell 4: Discover & Mount Models (FLAME, MICA, Stage 3 Detail GAN)
 import shutil
 import subprocess
+import tarfile
+import json
 from pathlib import Path
 
 print("--- Locating & Mounting Model Weights ---")
@@ -116,27 +118,34 @@ Path("models_cache/stage3_detail").mkdir(parents=True, exist_ok=True)
 ema_target = Path("models_cache/stage3_detail/ema_generator.pt")
 stats_target = Path("models_cache/stage3_detail/normalization_stats.json")
 
+# Check if detail_gan_assets.tar.gz was mounted from phase-3-detail-gan-train
+gan_archives = list(Path("/kaggle/input").glob("**/detail_gan_assets.tar.gz"))
+if gan_archives:
+    print(f"  Found Detail GAN archive: {gan_archives[0]}, extracting...")
+    try:
+        with tarfile.open(gan_archives[0], "r:gz") as tar:
+            tar.extractall("models_cache/stage3_detail")
+    except Exception as e:
+        print(f"  Warning extracting archive: {e}")
+
 if not ema_target.exists():
-    gan_candidates = list(Path("/kaggle/input").glob("**/ema_generator.pt"))
+    gan_candidates = list(Path("/kaggle/input").glob("**/ema_generator.pt")) + list(Path(".").glob("**/ema_generator.pt"))
     if gan_candidates:
         print(f"  Mounting Detail GAN from: {gan_candidates[0]}")
         shutil.copy(gan_candidates[0], ema_target)
     else:
-        # Search in previous kernel outputs or repo fallback
         print("  Detail GAN not in /kaggle/input; looking in repository checkpoints...")
         ckpt_local = Path("checkpoints/stage3_detail/ema_generator.pt")
         if ckpt_local.exists():
             shutil.copy(ckpt_local, ema_target)
 
 if not stats_target.exists():
-    stats_candidates = list(Path("/kaggle/input").glob("**/normalization_stats.json"))
+    stats_candidates = list(Path("/kaggle/input").glob("**/normalization_stats.json")) + list(Path(".").glob("**/normalization_stats.json"))
     if stats_candidates:
         shutil.copy(stats_candidates[0], stats_target)
     else:
-        # Default empirical stats
-        import json
         with open(stats_target, "w") as f:
-            json.dump({"p99_displacement_mm": 1.1465, "resolution": 1024}, f)
+            json.dump({"p99_displacement_mm": 1.1465, "p99_mm": 1.1465, "resolution": 1024}, f)
 
 print(f"All core models mounted: FLAME + MICA + Detail GAN ({ema_target.exists()}).")
 """
@@ -144,47 +153,53 @@ print(f"All core models mounted: FLAME + MICA + Detail GAN ({ema_target.exists()
 c5_code = """# Cell 5: Run Production End-to-End Pipeline Across All 4 Subjects
 import time
 import json
+import shutil
+import subprocess
 from pathlib import Path
 from src.pipeline import FaceGeoPipeline
 
 subjects = {
     "carell": {
-        "photos": [
-            "data/benchmark_test/carell/frontal.jpg",
-            "data/benchmark_test/carell/left45.jpg",
-            "data/benchmark_test/carell/right45.jpg"
-        ],
         "hair_preset": "heavy_stubble",
         "stylize": "chiseled",
+        "cdn": "https://raw.githubusercontent.com/Zielon/MICA/main/demo/input/carell.jpg",
+        "filename": "carell.jpg"
     },
     "connelly": {
-        "photos": [
-            "data/benchmark_test/connelly/frontal.jpg",
-            "data/benchmark_test/connelly/left45.jpg",
-            "data/benchmark_test/connelly/right45.jpg"
-        ],
         "hair_preset": "clean_shaven",
         "stylize": "neutral",
+        "cdn": "https://raw.githubusercontent.com/Zielon/MICA/main/demo/input/connelly.jpg",
+        "filename": "connelly.jpg"
     },
     "justin": {
-        "photos": [
-            "data/benchmark_test/justin/frontal.jpg",
-            "data/benchmark_test/justin/left45.jpg",
-            "data/benchmark_test/justin/right45.jpg"
-        ],
         "hair_preset": "goatee",
         "stylize": "heroic",
+        "cdn": "https://raw.githubusercontent.com/Zielon/MICA/main/demo/input/justin.png",
+        "filename": "justin.png"
     },
     "lawrence": {
-        "photos": [
-            "data/benchmark_test/lawrence/frontal.jpg",
-            "data/benchmark_test/lawrence/left45.jpg",
-            "data/benchmark_test/lawrence/right45.jpg"
-        ],
         "hair_preset": "clean_shaven",
         "stylize": "neutral",
+        "cdn": "https://raw.githubusercontent.com/Zielon/MICA/main/demo/input/lawrence.jpg",
+        "filename": "lawrence.jpg"
     },
 }
+
+test_bench_dir = Path("data/benchmark_test")
+test_bench_dir.mkdir(parents=True, exist_ok=True)
+
+# Prepare portraits with local fallback or CDN fetch
+for s_name, s_info in subjects.items():
+    s_dir = test_bench_dir / s_name
+    s_dir.mkdir(parents=True, exist_ok=True)
+    target_file = s_dir / s_info["filename"]
+    if not target_file.exists():
+        vendor_cand = Path("vendor/MICA/demo/input") / s_info["filename"]
+        if vendor_cand.exists():
+            shutil.copy(vendor_cand, target_file)
+        else:
+            print(f"Downloading portrait for {s_name} from CDN...")
+            subprocess.run(["curl", "-L", "-s", s_info["cdn"], "-o", str(target_file)], check=True)
 
 production_base = Path("/kaggle/working/outputs/production_batch")
 production_base.mkdir(parents=True, exist_ok=True)
@@ -203,7 +218,7 @@ for subj_name, s_info in subjects.items():
     
     # Configure production settings
     pipe_cfg = {
-        "pipeline": {"input_min_photos": 3},
+        "pipeline": {"input_min_photos": 1},
         "stage0": {"min_face_confidence": 0.4},
         "stage1": {"enable_dense_fitting": False},
         "stage1_5": {"enabled": True},
@@ -220,18 +235,22 @@ for subj_name, s_info in subjects.items():
             "neck_collar_threshold": 0.20
         },
         "stage5": {
-            "stylize": s_info["stylize"]
+            "stylize": s_info["stylize"],
+            "enable_lods": True,
+            "enable_armature": True
         },
         "allow_degraded": False
     }
     
-    pipeline = FaceGeoPipeline(cfg=pipe_cfg)
+    pipeline = FaceGeoPipeline(cfg=pipe_cfg, model_dir="models_cache")
+    photos = sorted([str(p) for p in (test_bench_dir / subj_name).glob("*.*") if p.suffix.lower() in [".jpg", ".jpeg", ".png"]])
     t0 = time.time()
-    res = pipeline.run(photo_paths=s_info["photos"], output_dir=str(subj_out))
+    res = pipeline.run(photo_paths=photos, output_dir=str(subj_out))
     elapsed = time.time() - t0
     
     print(f"✅ {subj_name.upper()} completed in {elapsed:.1f}s.")
     print(f"   OBJ: {Path(res['obj_path']).name}")
+    print(f"   FBX: {Path(res.get('fbx_path', 'none')).name}")
     print(f"   Manifest: {Path(res['manifest_path']).name}")
     production_results[subj_name] = res
 
@@ -299,7 +318,9 @@ subjects = ["carell", "connelly", "justin", "lawrence"]
 tiles = []
 for s_name in subjects:
     s_dir = production_base / s_name
-    preview_p = s_dir / "head_mesh.png"
+    preview_p = s_dir / "preview_render.png"
+    if not preview_p.exists():
+        preview_p = s_dir / "head_mesh.png"
     norm_p = s_dir / "head_normal_map.png"
     
     # Load or generate preview image

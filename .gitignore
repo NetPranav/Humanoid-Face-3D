@@ -48,3 +48,4 @@ uv_displacement_dataset/
 .DS_Store
 .vscode/
 .idea/
+notebooks/kaggle/build_*/

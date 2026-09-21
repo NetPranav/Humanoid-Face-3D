@@ -3,7 +3,7 @@ import cv2
 import json
 import yaml
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 from src.stage0_preprocess.detector import FaceDetector, FaceDetection
 from src.utils.flame_model import FLAMEModel
@@ -16,11 +16,24 @@ class FaceGeoPipeline:
     estimates expression, neutralizes the base geometry for UE5 ARKit deltas,
     synthesizes high-frequency micro-displacement, and packages game-ready outputs.
     """
-    def __init__(self, config_path: str, model_dir: str, detector: Optional[FaceDetector] = None):
-        with open(config_path, 'r') as f:
-            self.cfg = yaml.safe_load(f)
+    def __init__(
+        self,
+        config_path: Optional[Union[str, Path, Dict[str, Any]]] = None,
+        model_dir: Union[str, Path] = "models_cache",
+        detector: Optional[FaceDetector] = None,
+        cfg: Optional[Dict[str, Any]] = None
+    ):
+        if cfg is not None:
+            self.cfg = cfg
+        elif isinstance(config_path, dict):
+            self.cfg = config_path
+        elif config_path is not None:
+            with open(config_path, 'r') as f:
+                self.cfg = yaml.safe_load(f)
+        else:
+            self.cfg = {}
 
-        self.model_dir = Path(model_dir)
+        self.model_dir = Path(model_dir) if model_dir is not None else Path("models_cache")
         flame_path = self.model_dir / 'flame/generic_model.pkl'
         if not flame_path.exists() and (self.model_dir / 'generic_model.pkl').exists():
             flame_path = self.model_dir / 'generic_model.pkl'
