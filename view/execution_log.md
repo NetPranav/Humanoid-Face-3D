@@ -76,9 +76,11 @@ Every output artifact produced by the pipeline is cataloged below with its exact
 | `armature_rig.json` | JSON format (5 anatomical joints: Neck, Head, LeftEye, RightEye, Jaw) | Linear blend skinning (LBS) bone hierarchy and vertex weights for game skeleton attachment. |
 | `face_lod[0-3].obj` | 4-tier quadric decimation chain (LOD0: 9,976 tris, LOD1: 1,120 tris, LOD2: 1,120 tris, LOD3: 268 tris) | Performance-tiered meshes with shape keys preserved for runtime game engine rendering. |
 | `blendshapes_lod[0-3].json` | Decimated ARKit-52 shape key deltas corresponding to each LOD | Topology-matched blendshape targets for decimated LOD meshes. |
-| `stylized_chiseled/` | Subdirectory containing stylized base mesh, blendshapes, LODs, and rig | Parametrically deformed chiseled jaw/chin variant with bitwise collar boundary pinning ($\Delta v = 0$). |
-| `stylized_heroic/` | Subdirectory containing stylized base mesh, blendshapes, LODs, and rig | Comic/action superhero stylized variant with preserved neck seam boundary. |
+| `stylized_chiseled/` | Subdirectory containing stylized base mesh, blendshapes, LODs, and rig | Parametrically deformed chiseled jaw/chin variant (~17.2mm max displacement) with bitwise collar boundary pinning ($\Delta v = 0$). |
+| `stylized_heroic/` | Subdirectory containing stylized base mesh, blendshapes, LODs, and rig | Comic/action superhero stylized variant (~12.2mm max displacement) with preserved neck seam boundary. |
+| `stylized_gigachad/` | Subdirectory containing stylized base mesh, blendshapes, LODs, and rig | Exaggerated hyper-masculine jaw/chin variant (~23.3mm max displacement) with bitwise collar boundary pinning ($\Delta v = 0$). |
 | `phase1_preview_grid.png` | 2048×512 composite comparison image across all 4 subjects | Master visual verification matrix confirming distinct identity morphology. |
+| `stylization_comparison_boosted.png`| 1920×640 3/4 perspective comparison | Multi-preset comparison (Neutral vs Heroic vs Chiseled vs Gigachad) proving visual pop with zero neck seam tear. |
 
 ---
 
@@ -108,3 +110,4 @@ Every output artifact produced by the pipeline is cataloged below with its exact
 * **`[NOTEBOOK COMPILER]`** Created [`scripts/generate_phase1_nb.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/scripts/generate_phase1_nb.py) to compile and verify all Jupyter cells before notebook generation, eliminating string-escaping and JSON parsing bugs.
 * **`[STAGE 5 STYLIZATION]`** Built continuous deformation sliders and presets (`chiseled`, `heroic`) in [`src/stage5_export/stylize.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage5_export/stylize.py) with bitwise collar pinning.
 * **`[UNIT TEST SUITE]`** **89 / 89 tests passing** locally (`python3 -m unittest discover tests`).
+* **`[STYLIZATION SCALE BOOST & GIGACHAD PRESET]`** Boosted deformation scaling factors in [`src/stage5_export/stylize.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage5_export/stylize.py) from $0.035$ up to $0.095 \times H$. Max jaw/chin displacement now reaches $17.24\,\text{mm}$ (Chiseled) and $23.30\,\text{mm}$ (Gigachad) while collar vertices retain bitwise strict zero displacement ($\Delta v \equiv 0.000000\,\text{mm}$). All 4 subjects re-exported across neutral, chiseled, heroic, and gigachad with preserved ARKit-52 blendshapes and 4-tier LODs.
