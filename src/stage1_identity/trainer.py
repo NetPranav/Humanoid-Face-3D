@@ -150,25 +150,36 @@ class MICAIdentityTrainer:
 
     def compute_loss(self, pred_beta: torch.Tensor, gt_beta: torch.Tensor) -> Tuple[torch.Tensor, float, float]:
         """
-        Computes composite loss:
-        1. L1 shape coefficient loss (macro parameter error)
-        2. Cosine identity orientation loss (penalizes shrinkage toward population mean)
+        Computes composite loss with four ADDITIVE terms (none are replacements):
+        1. L1 shape coefficient loss — magnitude-sensitive parameter error
+        2. Identity orientation + norm loss — cosine direction PLUS explicit
+           β-norm matching to prevent magnitude collapse toward β=0 (mean face).
+           Cosine alone is magnitude-invariant and CANNOT prevent shrinkage.
         3. L1 3D vertex reconstruction loss in millimeters
-        4. Anatomical focal contour loss (mandibular and chin emphasis)
+        4. Anatomical focal contour loss — 2.5x weight on mandible/chin/zygomatic
         """
-        # Shape coefficient loss
+        # 1. Shape coefficient loss (magnitude-sensitive baseline)
         loss_beta = torch.mean(torch.abs(pred_beta - gt_beta))
 
-        # Identity directional cosine loss in PCA space
+        # 2a. Directional cosine loss in PCA space (direction only, not magnitude)
         cos_sim = torch.nn.functional.cosine_similarity(pred_beta, gt_beta, dim=-1)
-        loss_id = torch.mean(1.0 - cos_sim)
+        loss_cosine = torch.mean(1.0 - cos_sim)
 
-        # 3D Vertex loss in millimetres (native FLAME units in metres -> multiply by 1000)
+        # 2b. Explicit β-norm matching loss — CRITICAL for preventing magnitude
+        # collapse toward the population mean (β=0). Cosine similarity is blind
+        # to ‖β̂‖ → 0 shrinkage; this term directly penalizes it.
+        pred_norm = torch.norm(pred_beta, dim=-1)
+        gt_norm = torch.norm(gt_beta, dim=-1)
+        loss_norm = torch.mean(torch.abs(pred_norm - gt_norm))
+
+        loss_id = loss_cosine + loss_norm
+
+        # 3. 3D Vertex loss in millimetres (native FLAME units in metres -> multiply by 1000)
         beta_diff = pred_beta - gt_beta  # (B, 300)
         vert_diff = torch.einsum('bk,vck->bvc', beta_diff, self.shapedirs) * 1000.0  # (B, 5023, 3) in mm
         loss_vert = torch.mean(torch.abs(vert_diff))
 
-        # Focal contour loss on jawline and cheekbone anatomy
+        # 4. Focal contour loss on jawline and cheekbone anatomy
         loss_contour = torch.mean(self.focal_weights * torch.abs(vert_diff))
 
         total_loss = (
