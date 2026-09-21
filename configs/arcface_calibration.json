@@ -1,0 +1,34 @@
+{
+  "num_positive_pairs": 400,
+  "num_negative_pairs": 19500,
+  "positive_distribution": {
+    "mean": 0.0579,
+    "std": 0.0437,
+    "min": -0.0596,
+    "max": 0.1711
+  },
+  "negative_distribution": {
+    "mean": -0.0006,
+    "std": 0.0447,
+    "min": -0.1755,
+    "max": 0.166
+  },
+  "d_prime_separation": 1.323,
+  "equal_error_rate": {
+    "threshold": 0.0282,
+    "eer_value": 0.2586
+  },
+  "recommended_thresholds": {
+    "eer_balanced": 0.0282,
+    "target_far_1pct": {
+      "threshold": 0.1039,
+      "far": 0.00979,
+      "frr": 0.84
+    },
+    "target_far_0.1pct": {
+      "threshold": 0.1399,
+      "far": 0.00092,
+      "frr": 0.9775
+    }
+  }
+}

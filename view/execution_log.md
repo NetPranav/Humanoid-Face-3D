@@ -8,12 +8,15 @@
 
 | Component | Status | Technical Details / Active Link |
 | :--- | :---: | :--- |
-| **Git Repository** | 🟢 Synced | [`NetPranav/Humanoid-Face-3D`](https://github.com/NetPranav/Humanoid-Face-3D) (`main` @ [`187a073`](https://github.com/NetPranav/Humanoid-Face-3D/commit/187a073)) |
-| **Unit Test Suite** | 🟢 100% Passing | **89 / 89 tests passing** (`python3 -m unittest discover tests`) |
+| **Git Repository** | 🟢 Synced | [`NetPranav/Humanoid-Face-3D`](https://github.com/NetPranav/Humanoid-Face-3D) (`main`) |
+| **Unit Test Suite** | 🟢 100% Passing | **101 / 101 tests passing** (`python3 -m unittest discover tests`) |
 | **Kaggle Account** | 🟢 Authenticated | Username: `nightshowdown` (Personal Access Token active) |
 | **Stage 3 Resolution**| 🟢 Verified | **1024×1024 Ultra-Resolution** (16-bit uint PNG, $p_{99} = 9.045\,\text{mm}$) |
 | **Neck Seam Contract** | 🟢 Strictly Pinned | Collar vertices ($y_{\text{norm}} \le 0.20$) strictly pinned to $\Delta v \equiv 0$ |
 | **Phase 1 Baseline** | 🟢 100% Complete | **157 assets (417.21 MB)** across 4 benchmark subjects verified on disk |
+| **Stage 1.5 Residual** | 🟢 Verified | Graph convolutional network breaking FLAME linear ceiling with strict collar pinning |
+| **Pixel3DMM Dense** | 🟢 Verified | Dense normal and UV prediction module for contour-anchored FLAME fitting |
+| **Diff Rendering** | 🟢 Verified | Soft silhouette IoU + landmark reprojection losses wired into Stage 1 training |
 
 ---
 
@@ -109,5 +112,11 @@ Every output artifact produced by the pipeline is cataloged below with its exact
 * **`[PYTORCH 2.6 FIX]`** Fixed PyTorch 2.6 `WeightsUnpickler` exception by adding `weights_only=False` with `TypeError` fallbacks across MICA and SMIRK checkpoint loaders ([`src/stage1_identity/inference.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_identity/inference.py), [`src/stage2_expression/encoder.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage2_expression/encoder.py)).
 * **`[NOTEBOOK COMPILER]`** Created [`scripts/generate_phase1_nb.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/scripts/generate_phase1_nb.py) to compile and verify all Jupyter cells before notebook generation, eliminating string-escaping and JSON parsing bugs.
 * **`[STAGE 5 STYLIZATION]`** Built continuous deformation sliders and presets (`chiseled`, `heroic`) in [`src/stage5_export/stylize.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage5_export/stylize.py) with bitwise collar pinning.
-* **`[UNIT TEST SUITE]`** **89 / 89 tests passing** locally (`python3 -m unittest discover tests`).
+* **`[UNIT TEST SUITE EXPANSION]`** **101 / 101 tests passing** locally (`python3 -m unittest discover tests`). Added test suites for Stage 1.5 residual network, Pixel3DMM fitting, and differentiable rendering.
 * **`[STYLIZATION SCALE BOOST & GIGACHAD PRESET]`** Boosted deformation scaling factors in [`src/stage5_export/stylize.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage5_export/stylize.py) from $0.035$ up to $0.095 \times H$. Max jaw/chin displacement now reaches $17.24\,\text{mm}$ (Chiseled) and $23.30\,\text{mm}$ (Gigachad) while collar vertices retain bitwise strict zero displacement ($\Delta v \equiv 0.000000\,\text{mm}$). All 4 subjects re-exported across neutral, chiseled, heroic, and gigachad with preserved ARKit-52 blendshapes and 4-tier LODs.
+* **`[BETA-NORM MATCHING & COLLAPSE SMOKE TEST]`** Implemented explicit β-norm matching loss term in [`src/stage1_identity/trainer.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_identity/trainer.py) and created [`scripts/beta_collapse_smoke_test.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/scripts/beta_collapse_smoke_test.py). Validated that explicit norm penalization prevents magnitude collapse toward the population mean face ($\beta=0$) under optimizer weight decay.
+* **`[ARCFACE THRESHOLD CALIBRATION]`** Created [`scripts/calibrate_arcface_threshold.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/scripts/calibrate_arcface_threshold.py) and generated [`configs/arcface_calibration.json`](file:///Users/pranav/Project%20Folder/3d%20Model%20/configs/arcface_calibration.json) with empirical ROC, FAR, FRR, and EER distributions.
+* **`[PIXEL3DMM DENSE PER-PIXEL FITTING]`** Built [`src/stage1_identity/pixel3dmm_fitter.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_identity/pixel3dmm_fitter.py) with ViT-based per-pixel surface normal and UV coordinate decoders plus `DenseFLAMEFitter` for contour-anchored FLAME fitting, integrated into [`src/pipeline.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/pipeline.py).
+* **`[STAGE 1.5 MACRO-SHAPE RESIDUAL NETWORK]`** Implemented [`src/stage1_5_residual/residual_net.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_5_residual/residual_net.py) and [`src/stage1_5_residual/trainer.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_5_residual/trainer.py). Graph convolutional vertex displacement network with Laplacian smoothness and bitwise collar pinning ($\Delta v \equiv 0.0$ for $y_{\text{norm}} \le 0.20$), breaking the linear PCA ceiling to minimize manual artist sculpt passes.
+* **`[DIFFERENTIABLE RENDERING IN STAGE 1 TRAINING]`** Built [`src/stage1_identity/diff_render.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_identity/diff_render.py) with soft silhouette IoU loss and 2D landmark reprojection loss, wired into [`src/stage1_identity/trainer.py`](file:///Users/pranav/Project%20Folder/3d%20Model%20/src/stage1_identity/trainer.py).
+

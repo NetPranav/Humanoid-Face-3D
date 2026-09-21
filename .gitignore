@@ -42,6 +42,7 @@ uv_displacement_dataset/
 *.pt
 *.pth
 *.onnx
+*.zip
 
 # IDE / OS
 .DS_Store

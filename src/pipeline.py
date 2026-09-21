@@ -105,6 +105,26 @@ class FaceGeoPipeline:
         stage2 = self._get_stage2()
         expression_psi, pose_theta = stage2.encode(frontal_det)
 
+        # Optional Pixel3DMM dense per-pixel fitting refinement
+        stage1_cfg = self.cfg.get('stage1', {}) if isinstance(self.cfg, dict) else {}
+        if stage1_cfg.get('enable_dense_fitting', False) and self.flame is not None:
+            print("[Stage 1 Upgrade] Refining β with Pixel3DMM dense per-pixel fitting...")
+            try:
+                import torch
+                from src.stage1_identity.pixel3dmm_fitter import DenseFLAMEFitter
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                fitter = DenseFLAMEFitter(
+                    self.flame,
+                    n_iterations=int(stage1_cfg.get('dense_iterations', 100)),
+                    device=device
+                )
+                frontal_img = frontal_det.aligned_face if frontal_det is not None else None
+                if frontal_img is not None:
+                    fit_res = fitter.fit(frontal_img, initial_beta=beta)
+                    beta = fit_res['beta']
+            except Exception as e:
+                print(f"[Stage 1 Warning] Pixel3DMM dense fitting skipped: {e}")
+
         # ── Neutral-expression normalization (CRITICAL) ──────────────────────
         # Base mesh is exported in canonical neutral pose (psi=0, theta=neutral).
         # Ensures ARKit-52 blendshape target offsets in UE5 remain mathematically correct.
@@ -115,6 +135,31 @@ class FaceGeoPipeline:
                 "(e.g. data/flame_model/generic_model.pkl) is required to decode base geometry."
             )
         neutral_vertices, faces = self.flame.decode_neutral(beta)
+
+        # ── Stage 1.5: Macro-Shape Non-Linear Residual Correction ────────────
+        stage1_5_cfg = self.cfg.get('stage1_5', {}) if isinstance(self.cfg, dict) else {}
+        residual_ckpt = self.model_dir / 'stage1_5/checkpoint_latest.pt'
+        if stage1_5_cfg.get('enabled', False) or residual_ckpt.exists():
+            print("[Stage 1.5] Applying macro-shape non-linear residual correction...")
+            try:
+                import torch
+                from src.stage1_5_residual.residual_net import MacroShapeResidualNet
+                res_net = MacroShapeResidualNet(flame_model=self.flame)
+                if residual_ckpt.exists():
+                    ckpt = torch.load(residual_ckpt, map_location='cpu')
+                    res_net.load_state_dict(ckpt.get('state_dict', ckpt), strict=False)
+                res_net.eval()
+                with torch.no_grad():
+                    v_in = torch.from_numpy(neutral_vertices).float().unsqueeze(0)
+                    id_feats = [d.embedding for d in valid_dets if hasattr(d, 'embedding') and d.embedding is not None]
+                    if id_feats:
+                        id_feat = torch.from_numpy(np.mean(id_feats, axis=0)).float().unsqueeze(0)
+                    else:
+                        id_feat = torch.zeros(1, 512)
+                    corrected_v, delta_v = res_net(v_in, id_feat)
+                    neutral_vertices = corrected_v.squeeze(0).cpu().numpy()
+            except Exception as e:
+                print(f"[Stage 1.5 Warning] Residual correction skipped: {e}")
 
         expression_metadata = {
             'expression_psi': expression_psi.tolist(),
@@ -173,8 +218,9 @@ class FaceGeoPipeline:
         stage5_manifest = {}
         try:
             from src.stage5_export.exporter import Stage5Exporter
-            retopo_matrix_path = self.config.get('stage5', {}).get('correspondence_w') if hasattr(self, 'config') else None
-            stylize_config = self.config.get('stage5', {}).get('stylize') if hasattr(self, 'config') else None
+            cfg_dict = self.cfg if isinstance(self.cfg, dict) else {}
+            retopo_matrix_path = cfg_dict.get('stage5', {}).get('correspondence_w')
+            stylize_config = cfg_dict.get('stage5', {}).get('stylize')
             exporter = Stage5Exporter(
                 correspondence_w_path=retopo_matrix_path,
                 enable_lods=True,

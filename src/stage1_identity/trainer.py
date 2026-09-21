@@ -55,6 +55,8 @@ class MICAIdentityTrainer:
         vert_loss_lambda: float = 1.0,
         id_loss_lambda: float = 0.5,
         contour_loss_lambda: float = 0.5,
+        enable_diff_render: bool = False,
+        lambda_render: float = 0.5,
         batch_size: int = 16,
         max_epochs: int = 50,
         max_hours: float = 11.5
@@ -75,6 +77,8 @@ class MICAIdentityTrainer:
         self.vert_loss_lambda = vert_loss_lambda
         self.id_loss_lambda = id_loss_lambda
         self.contour_loss_lambda = contour_loss_lambda
+        self.enable_diff_render = enable_diff_render
+        self.lambda_render = lambda_render
         self.batch_size = batch_size
         self.max_epochs = max_epochs
         self.max_seconds = max_hours * 3600.0
@@ -84,10 +88,12 @@ class MICAIdentityTrainer:
         self.flame = FLAMEModel(flame_model_path, scale_to_mm=False)
         # shapedirs shape: (5023, 3, 300)
         self.shapedirs = torch.from_numpy(self.flame.shapedirs).float().to(self.device)
+        self.flame_faces = torch.from_numpy(self.flame.faces).long().to(self.device)
 
         # Compute anatomical focal weight mask (mandible, chin, zygomatic arches)
         # to heavily penalize collapse to population-average jaw/cheek morphology
         v_temp = torch.from_numpy(self.flame.v_template).float().to(self.device)
+        self.v_template = v_temp
         y_min, y_max = v_temp[:, 1].min(), v_temp[:, 1].max()
         z_min, z_max = v_temp[:, 2].min(), v_temp[:, 2].max()
         y_norm = (v_temp[:, 1] - y_min) / (y_max - y_min + 1e-8)
@@ -98,6 +104,13 @@ class MICAIdentityTrainer:
         weights = torch.ones((v_temp.shape[0], 1), device=self.device)
         weights[focal_mask] = 2.5  # 2.5x gradient penalty on jaw/cheek errors
         self.focal_weights = weights
+
+        # Optional Differentiable Rendering Loss
+        if enable_diff_render:
+            from src.stage1_identity.diff_render import DifferentiableRenderLoss
+            self.diff_render_loss = DifferentiableRenderLoss(device=str(self.device))
+        else:
+            self.diff_render_loss = None
 
         # 2. Build model
         self.model = MappingNetwork(z_dim=512, map_hidden_dim=300, map_output_dim=300, hidden=3).to(self.device)
@@ -148,7 +161,12 @@ class MICAIdentityTrainer:
 
         self.best_val_loss = float('inf')
 
-    def compute_loss(self, pred_beta: torch.Tensor, gt_beta: torch.Tensor) -> Tuple[torch.Tensor, float, float]:
+    def compute_loss(
+        self,
+        pred_beta: torch.Tensor,
+        gt_beta: torch.Tensor,
+        batch: Optional[Dict[str, Any]] = None
+    ) -> Tuple[torch.Tensor, float, float]:
         """
         Computes composite loss with four ADDITIVE terms (none are replacements):
         1. L1 shape coefficient loss — magnitude-sensitive parameter error
@@ -157,6 +175,7 @@ class MICAIdentityTrainer:
            Cosine alone is magnitude-invariant and CANNOT prevent shrinkage.
         3. L1 3D vertex reconstruction loss in millimeters
         4. Anatomical focal contour loss — 2.5x weight on mandible/chin/zygomatic
+        5. Optional Differentiable Rendering loss (silhouette IoU + landmark reprojection)
         """
         # 1. Shape coefficient loss (magnitude-sensitive baseline)
         loss_beta = torch.mean(torch.abs(pred_beta - gt_beta))
@@ -188,6 +207,21 @@ class MICAIdentityTrainer:
             self.id_loss_lambda * loss_id +
             self.contour_loss_lambda * loss_contour
         )
+
+        # 5. Optional Differentiable Rendering Loss
+        if self.diff_render_loss is not None and batch is not None:
+            pred_verts = self.v_template.unsqueeze(0) + torch.einsum('bk,vck->bvc', pred_beta, self.shapedirs)
+            target_sil = batch.get('silhouette')
+            lmks = batch.get('landmarks_2d')
+            lmk_indices = batch.get('landmark_indices')
+            loss_render, _ = self.diff_render_loss(
+                pred_verts, self.flame_faces,
+                target_silhouette=target_sil,
+                landmarks_2d=lmks,
+                landmark_indices=lmk_indices
+            )
+            total_loss = total_loss + self.lambda_render * loss_render
+
         return total_loss, float(loss_beta.item()), float(loss_vert.item())
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
@@ -208,7 +242,7 @@ class MICAIdentityTrainer:
 
             with torch.amp.autocast('cuda', dtype=torch.float16, enabled=self.use_amp):
                 pred_beta = self.ddp_model(features)
-                loss, l_b, l_v = self.compute_loss(pred_beta, beta_gt)
+                loss, l_b, l_v = self.compute_loss(pred_beta, beta_gt, batch=batch)
 
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
