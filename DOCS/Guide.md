@@ -1,6 +1,10 @@
 # Face Geometry Pipeline — Implementation Guide
 
 > This is the **execution guide**, not the research reference. It tells you what to type, in what order, on which day. For *why* any decision was made, see the DOCS folder. Every step here ends with a verifiable output — don't move to the next step until the current one passes its check.
+>
+> ⚠️ **CRITICAL ARCHITECTURE UPDATE (September 2026):**
+> - **Research 1 Postmortem:** The initial pure generative GAN strategy on Meta Multiface scans has been decommissioned due to dataset frequency limits and lack of true 50-micron pores. See [DOCS/FAILED/RESEARCH_1/01_postmortem_multiface_detail_gan.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/FAILED/RESEARCH_1/01_postmortem_multiface_detail_gan.md) and [DOCS/FAILED/RESEARCH_1/03_training_trajectory_and_cloud_runs.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/FAILED/RESEARCH_1/03_training_trajectory_and_cloud_runs.md).
+> - **Active Production Path:** The pipeline now implements the **4-Tier MetaHuman Detail Engine** (Photo-Derived Meso Wrinkles + 4K Anatomical Pore Synthesis + Cycles Random Walk SSS). See [DOCS/02_Metahuman_Film_Grade_Synthesis.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/02_Metahuman_Film_Grade_Synthesis.md) and [DOCS/05_Blender_Cycles_Film_Rendering_Engine.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/05_Blender_Cycles_Film_Rendering_Engine.md).
 
 ---
 

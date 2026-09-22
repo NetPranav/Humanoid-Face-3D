@@ -2,6 +2,10 @@
 
 > This is the **execution guide**, not the research reference. It tells you what to type, in what order. For *why* any decision was made, see `Research.md` and `DOCS/01–03`. For what is currently broken and why, see `DOCS/00_Code_Review.md`.
 >
+> ⚠️ **HISTORICAL AUDIT NOTICE:**
+> For the postmortem on the failed Meta Multiface Detail GAN experiment, see [DOCS/FAILED/RESEARCH_1/01_postmortem_multiface_detail_gan.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/FAILED/RESEARCH_1/01_postmortem_multiface_detail_gan.md).
+> For the active film-grade MetaHuman synthesis architecture, see [DOCS/02_Metahuman_Film_Grade_Synthesis.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/02_Metahuman_Film_Grade_Synthesis.md) and [DOCS/05_Blender_Cycles_Film_Rendering_Engine.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/05_Blender_Cycles_Film_Rendering_Engine.md).
+>
 > **Revision note.** The previous version of this guide described code that had never been run, using phrasing ("Copy exactly", "verified", "Day 0 is complete when…") that implied it had been. Several steps could not work. This revision fixes them, marks what is real versus aspirational, and adds the work that was missing entirely — chiefly Stage 5 retopology, blendshape generation, and the licensing audit.
 
 ---

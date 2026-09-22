@@ -1,6 +1,12 @@
 # Adversarial Detail Synthesis — Research Reference
 
-> This document is a standalone deep dive into the GAN-based detail stage (Stage 3 of the pipeline). It covers the specific papers this design is based on, the exact architecture of generator and discriminator, the full loss recipe, training stability techniques, and how the GAN-diffusion hybrid works. Read this before implementing or debugging Stage 3.
+> ⚠️ **ARCHITECTURAL STATUS NOTICE:**
+> The original monolithic conditional GAN implementation described in this document was evaluated in Research 1 and failed to produce film-grade pore fidelity due to dataset frequency limits and wireframe leakage.
+> - **Failure Postmortem:** See [DOCS/FAILED/RESEARCH_1/01_postmortem_multiface_detail_gan.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/FAILED/RESEARCH_1/01_postmortem_multiface_detail_gan.md).
+> - **Wireframe Artifact Breakdown:** See [DOCS/FAILED/RESEARCH_1/02_wireframe_leakage_and_smoothing_failure.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/FAILED/RESEARCH_1/02_wireframe_leakage_and_smoothing_failure.md).
+> - **Current Production Architecture:** The pipeline has transitioned to the 4-Tier Hybrid Engine (Photo-Derived Meso Wrinkles + 4K Anatomical Pore Synthesis + Cycles Random Walk SSS) detailed in [DOCS/02_Metahuman_Film_Grade_Synthesis.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/02_Metahuman_Film_Grade_Synthesis.md).
+>
+> This document remains preserved for architectural reference regarding the generator/discriminator loss formulation.
 
 ---
 

@@ -1,6 +1,10 @@
 # Datasets, Evaluation & Production Pipeline — Research Reference
 
 > This document covers everything outside the core ML models: the datasets used for training and evaluation, the evaluation metrics and benchmarks, the production export pipeline (UE5/MetaHuman targeting), facial hair as static geometry, and the Kaggle-only environment strategy.
+>
+> ⚠️ **CRITICAL ARCHITECTURE UPDATE (September 2026):**
+> - **Meta Multiface Scan Limitations:** The Meta Multiface scan dataset was evaluated in Research 1 and found to be an optical tracking dataset with a frequency ceiling insufficient for 50-micron pores, alongside physical acquisition artifacts (latex bald caps). See [DOCS/FAILED/RESEARCH_1/01_postmortem_multiface_detail_gan.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/FAILED/RESEARCH_1/01_postmortem_multiface_detail_gan.md).
+> - **Active Production Specification:** The pipeline has adopted a 4-Tier Hybrid Engine combining photo-derived meso wrinkles, 4K anatomical pore synthesis, and Blender Cycles Random Walk SSS. See [DOCS/02_Metahuman_Film_Grade_Synthesis.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/02_Metahuman_Film_Grade_Synthesis.md) and [DOCS/05_Blender_Cycles_Film_Rendering_Engine.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/05_Blender_Cycles_Film_Rendering_Engine.md).
 
 ---
 

@@ -1,6 +1,10 @@
 # Face Reconstruction Models — Research Reference
 
 > This document is a standalone reference for every model considered or used in the face geometry pipeline. Read this to understand what each model actually does, how it works internally, where it fits in the pipeline, and what its real limitations are.
+>
+> ⚠️ **Historical & Architectural Updates:**
+> - For the postmortem on the failed Meta Multiface Detail GAN experiment, see [DOCS/FAILED/RESEARCH_1/01_postmortem_multiface_detail_gan.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/FAILED/RESEARCH_1/01_postmortem_multiface_detail_gan.md).
+> - For the active film-grade MetaHuman synthesis architecture (Photo-derived meso wrinkles + 4K anatomical pore synthesis + Cycles Random Walk SSS), see [DOCS/02_Metahuman_Film_Grade_Synthesis.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/02_Metahuman_Film_Grade_Synthesis.md).
 
 ---
 

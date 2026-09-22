@@ -2,6 +2,9 @@
 
 > **Stages 6, 7, 8** of the Humanoid-Face-3D pipeline.  
 > Transforms raw input photographs into a complete set of physically based rendering (PBR) texture maps for film-grade 3D head assets.
+>
+> 💡 **Production Integration Note:**
+> The texture maps generated here (delighted albedo, roughness, cavity/AO, SSS thickness) directly feed into the film-grade Blender Cycles shader node tree described in [DOCS/05_Blender_Cycles_Film_Rendering_Engine.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/05_Blender_Cycles_Film_Rendering_Engine.md) and support the 4-tier detail hierarchy defined in [DOCS/02_Metahuman_Film_Grade_Synthesis.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/02_Metahuman_Film_Grade_Synthesis.md).
 
 ---
 
