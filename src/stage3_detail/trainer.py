@@ -267,9 +267,16 @@ def main():
                                 pass
 
                     print(f"--> Checkpoint saved at step {step:06d} (latest & ema_generator retained, older step files pruned)")
+                # Save periodic checkpoint at rank 0
+                pass
 
-                # Emergency checkpoint before Kaggle 12hr session kill
-                if (time.time() - start_time) / 3600 > HYPERPARAMS['max_session_hours']:
+            # ── 4. Graceful Session Timeout Guard (All Ranks) ─────
+            should_stop = torch.tensor([1 if (time.time() - start_time) / 3600 > HYPERPARAMS['max_session_hours'] else 0], device=device)
+            if torch.distributed.is_initialized():
+                torch.distributed.broadcast(should_stop, src=0)
+
+            if should_stop.item() == 1:
+                if rank == 0:
                     torch.save({
                         'step': step,
                         'generator': g_raw.state_dict(),
@@ -283,7 +290,11 @@ def main():
                     torch.save(ema_generator.state_dict(), f"{args.checkpoint_dir}/ema_generator.pt")
                     torch.save(g_raw.state_dict(), f"{args.checkpoint_dir}/generator_latest.pt")
                     print(f"Session approaching 11.5 hours. Emergency checkpoint saved at step {step}.")
-                    return
+
+                if torch.distributed.is_initialized():
+                    torch.distributed.barrier()
+                    torch.distributed.destroy_process_group()
+                return
 
 if __name__ == '__main__':
     main()
