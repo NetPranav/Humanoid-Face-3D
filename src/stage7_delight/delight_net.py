@@ -493,6 +493,8 @@ class DelightingPipeline:
             cv2.imwrite(str(albedo_linear_path), linear_16bit)
 
         return {
+            'albedo': str(albedo_srgb_path),
             'albedo_diffuse': str(albedo_srgb_path),
+            'albedo_diffuse_png': str(albedo_srgb_path),
             'albedo_linear': str(albedo_linear_path),
         }

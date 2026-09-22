@@ -48,7 +48,7 @@ class FaceGeoPipeline:
             allow_degraded = self.cfg.get('allow_degraded', False) if isinstance(self.cfg, dict) else False
             self.detector = FaceDetector(allow_degraded=allow_degraded)
 
-        # Lazy-loaded network models
+        # Lazy-loaded network models & detail engines
         self._stage1 = None
         self._stage2 = None
         self._stage3 = None
@@ -56,6 +56,9 @@ class FaceGeoPipeline:
         self._stage6 = None
         self._stage7 = None
         self._stage8 = None
+        self._meso_extractor = None
+        self._micro_synthesizer = None
+        self._detail_fusion = None
 
     def _get_stage1(self):
         if self._stage1 is None:
@@ -182,13 +185,54 @@ class FaceGeoPipeline:
                 self._stage8 = None
         return self._stage8
 
+    def _get_meso_extractor(self):
+        if self._meso_extractor is None:
+            stage3_cfg = self.cfg.get('stage3', {}) if isinstance(self.cfg, dict) else {}
+            res = int(stage3_cfg.get('resolution', 1024))
+            max_wrinkle = float(stage3_cfg.get('max_wrinkle_depth_mm', 1.20))
+            from src.stage3_detail.photometric_detail import PhotometricDetailExtractor
+            self._meso_extractor = PhotometricDetailExtractor(
+                resolution=res,
+                max_wrinkle_depth_mm=max_wrinkle,
+            )
+        return self._meso_extractor
+
+    def _get_micro_synthesizer(self):
+        if self._micro_synthesizer is None:
+            stage3_cfg = self.cfg.get('stage3', {}) if isinstance(self.cfg, dict) else {}
+            res = int(stage3_cfg.get('resolution', 1024))
+            density = float(stage3_cfg.get('pore_density_scale', 1.0))
+            from src.stage3_detail.anatomical_pores import AnatomicalPoreSynthesizer
+            self._micro_synthesizer = AnatomicalPoreSynthesizer(
+                resolution=res,
+                pore_density_scale=density,
+            )
+        return self._micro_synthesizer
+
+    def _get_detail_fusion(self):
+        if self._detail_fusion is None:
+            stage3_cfg = self.cfg.get('stage3', {}) if isinstance(self.cfg, dict) else {}
+            res = int(stage3_cfg.get('resolution', 1024))
+            max_scale = float(stage3_cfg.get('max_scale_mm', 5.0))
+            cavity_str = float(stage3_cfg.get('cavity_strength', 0.40))
+            from src.stage3_detail.fusion import MultiTierDetailFusion
+            self._detail_fusion = MultiTierDetailFusion(
+                resolution=res,
+                max_scale_mm=max_scale,
+                cavity_strength=cavity_str,
+            )
+        return self._detail_fusion
+
     def run(self, photo_paths: List[str], output_dir: str) -> Dict[str, Any]:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # ── Pre-flight input validation & detection ──────────────────────────
         print("[Stage 0] Validating input portraits and extracting alignments...")
-        min_photos = self.cfg.get('pipeline', {}).get('input_min_photos', 3) if isinstance(self.cfg, dict) else 3
+        pipe_cfg = self.cfg.get('pipeline', {}) if isinstance(self.cfg, dict) else {}
+        min_photos = pipe_cfg.get('input_min_photos', 3)
+        if 'input_min_photos' not in pipe_cfg and len(photo_paths) < min_photos and len(photo_paths) >= 1:
+            min_photos = len(photo_paths)
         min_face_conf = self.cfg.get('stage0', {}).get('min_face_confidence', 0.5) if isinstance(self.cfg, dict) else 0.5
         val_res = validate_inputs(
             photo_paths,
@@ -275,31 +319,153 @@ class FaceGeoPipeline:
             'pose_theta': pose_theta.tolist(),
         }
 
-        # ── Stage 3: Micro-displacement detail synthesis ────────────────────
-        detail_maps = None
-        detail_displacement = None
+        # ── PBR TEXTURE ENGINE: Projection & Delighting (Stages 6 & 7) ───────
+        # Runs first so clean diffuse albedo is available for photo-derived wrinkles
+        texture_maps = {}
+        albedo_diffuse_img = None
+        try:
+            texture_maps = self._run_texture_engine(
+                photos=[cv2.imread(str(p)) for p in photo_paths],
+                detections=detections,
+                vertices=neutral_vertices,
+                faces=faces,
+                detail_maps=None,
+                output_dir=output_dir,
+            )
+            for k in ['albedo_diffuse_png', 'projected_raw_png', 'albedo']:
+                if k in texture_maps and Path(texture_maps[k]).exists():
+                    albedo_diffuse_img = cv2.imread(str(texture_maps[k]))
+                    break
+        except Exception as e:
+            print(f"[Texture Engine Warning] UV texture projection / delighting failed: {e}")
+
+        # ── TIER 1 + 2 + 3 MULTI-TIER GEOMETRY & PBR COUPLING ────────────────
+        stage3_cfg = self.cfg.get('stage3', {}) if isinstance(self.cfg, dict) else {}
+        detail_res = int(stage3_cfg.get('resolution', 1024))
+        detail_maps = {}
+
+        # 1. Tier 1 Macro displacement (optional GAN checkpoint if available)
+        disp_macro = None
         stage3 = self._get_stage3()
         if stage3 is not None:
-            print("[Stage 3] Synthesizing high-frequency micro-displacement & normal maps...")
             try:
-                stage3_cfg = self.cfg.get('stage3', {}) if isinstance(self.cfg, dict) else {}
-                res = int(stage3_cfg.get('resolution', 512))
                 id_feats = [d.embedding for d in valid_dets if hasattr(d, 'embedding') and d.embedding is not None]
                 per_view_feats = np.stack(id_feats, axis=0) if id_feats else None
-
                 synth_res = stage3.synthesize(
                     neutral_vertices=neutral_vertices,
                     faces=faces,
                     per_view_feats=per_view_feats,
                     beta=beta,
                     psi=expression_psi,
-                    resolution=res
+                    resolution=detail_res
                 )
-                detail_maps = stage3.save_maps(synth_res, output_dir=output_dir, prefix="head")
-                detail_displacement = synth_res['disp_mm']
-                print(f"[Stage 3] Synthesized {res}x{res} 16-bit displacement and normal maps.")
+                disp_macro = synth_res['disp_mm']
             except Exception as e:
-                print(f"[Stage 3 Warning] Micro-displacement synthesis failed: {e}")
+                print(f"[Tier 1 Notice] Macro GAN detail synthesis skipped: {e}")
+
+        # 2. Tier 2 Meso Wrinkles (Photo-Derived Shape-from-Shading)
+        disp_meso = None
+        if stage3_cfg.get('enable_meso', True) and albedo_diffuse_img is not None:
+            print("[Tier 2 Meso] Extracting real photo-derived wrinkles (shape-from-shading)...")
+            try:
+                meso_ext = self._get_meso_extractor()
+                meso_res = meso_ext.extract_from_albedo(
+                    albedo_rgb=albedo_diffuse_img,
+                    vertices=neutral_vertices,
+                    faces=faces,
+                )
+                disp_meso = meso_res['displacement_mm']
+            except Exception as e:
+                print(f"[Tier 2 Warning] Photo-derived wrinkle extraction skipped: {e}")
+
+        # 3. Tier 3 Micro Pores (4K Anatomical Zone Synthesis)
+        disp_micro = None
+        zone_masks = None
+        if stage3_cfg.get('enable_micro', True):
+            print("[Tier 3 Micro] Synthesizing anatomical cellular pores (50-micron follicles)...")
+            try:
+                micro_synth = self._get_micro_synthesizer()
+                micro_res = micro_synth.synthesize(
+                    resolution=detail_res,
+                    vertices=neutral_vertices,
+                    faces=faces,
+                )
+                disp_micro = micro_res['displacement_mm']
+                zone_masks = micro_res['zone_masks']
+            except Exception as e:
+                print(f"[Tier 3 Warning] Anatomical pore synthesis skipped: {e}")
+
+        # 4. Multi-Tier Detail Fusion & PBR Coupling
+        fusion = self._get_detail_fusion()
+        if zone_masks is None:
+            zone_masks = {'valid': np.ones((detail_res, detail_res), dtype=np.float32)}
+
+        coupled_pbr = fusion.couple_pbr_material_stack(
+            meso_disp_mm=disp_meso if disp_meso is not None else np.zeros((detail_res, detail_res), dtype=np.float32),
+            micro_disp_mm=disp_micro if disp_micro is not None else np.zeros((detail_res, detail_res), dtype=np.float32),
+            zone_masks=zone_masks,
+            macro_disp_mm=disp_macro,
+            weight_meso=float(stage3_cfg.get('weight_meso', 1.0)),
+            weight_micro=float(stage3_cfg.get('weight_micro', 1.0)),
+            weight_macro=float(stage3_cfg.get('weight_macro', 1.0)),
+        )
+        saved_detail_maps = fusion.save_maps(coupled_pbr, output_dir=output_dir, prefix="film")
+        detail_displacement = coupled_pbr['composite_displacement_mm']
+
+        # Enforce System Invariant Rule 4: Neck Seam Contract (Bitwise Collar Pinning)
+        bottom_20_rows = int(0.85 * detail_res)
+        collar_slice = detail_displacement[bottom_20_rows:, :]
+        collar_max = float(np.max(np.abs(collar_slice)))
+        if collar_max > 1e-4:
+            raise RuntimeError(
+                f"Rule 4 Invariant Violated: Neck boundary collar has non-zero displacement (max={collar_max:.6f} mm). "
+                "The lowest 20% of vertices must remain strictly pinned to 0.0 mm."
+            )
+
+        for k, v in saved_detail_maps.items():
+            detail_maps[k] = str(v)
+        detail_maps['displacement_16bit'] = str(saved_detail_maps['displacement_png'])
+        detail_maps['displacement_png'] = str(saved_detail_maps['displacement_png'])
+        detail_maps['normal_map'] = str(saved_detail_maps['normal_png'])
+        detail_maps['normal_png'] = str(saved_detail_maps['normal_png'])
+        detail_maps['cavity'] = str(saved_detail_maps['cavity_ao_png'])
+        detail_maps['cavity_ao'] = str(saved_detail_maps['cavity_ao_png'])
+        detail_maps['roughness'] = str(saved_detail_maps['roughness_base_png'])
+        detail_maps['roughness_base'] = str(saved_detail_maps['roughness_base_png'])
+        detail_maps['roughness_coat'] = str(saved_detail_maps['roughness_coat_png'])
+
+        # Merge texture maps (projected and delighted albedo)
+        if texture_maps:
+            detail_maps.update(texture_maps)
+            if 'albedo_diffuse_png' in texture_maps:
+                detail_maps['albedo'] = str(texture_maps['albedo_diffuse_png'])
+            elif 'projected_raw_png' in texture_maps:
+                detail_maps['albedo'] = str(texture_maps['projected_raw_png'])
+
+        # ── Stage 8: SSS Thickness Estimation ────────────────────────────────
+        if 'sss_thickness' in texture_maps:
+            detail_maps['sss_thickness'] = str(texture_maps['sss_thickness'])
+            detail_maps['sss_thickness_png'] = str(texture_maps['sss_thickness'])
+        elif 'sss_thickness_map' in texture_maps:
+            detail_maps['sss_thickness'] = str(texture_maps['sss_thickness_map'])
+            detail_maps['sss_thickness_png'] = str(texture_maps['sss_thickness_map'])
+        else:
+            stage8 = self._get_stage8()
+            if stage8 is not None:
+                try:
+                    from src.stage3_detail.rasterizer import load_flame_uv_layout, compute_vertex_normals
+                    uv_coords, uv_faces = load_flame_uv_layout()
+                    vertex_normals = compute_vertex_normals(neutral_vertices, faces)
+                    sss_map = stage8.sss_gen.generate(
+                        neutral_vertices, faces, vertex_normals, uv_coords, uv_faces, faces,
+                        resolution=detail_res
+                    )
+                    sss_path = output_dir / "sss_thickness_map.png"
+                    cv2.imwrite(str(sss_path), np.round(sss_map * 255.0).astype(np.uint8))
+                    detail_maps['sss_thickness'] = str(sss_path)
+                    detail_maps['sss_thickness_png'] = str(sss_path)
+                except Exception as e:
+                    print(f"[Stage 8 SSS Notice] SSS thickness estimation skipped: {e}")
 
         # ── Stage 4: Facial Hair & Stubble Geometry ──────────────────────────
         facial_hair_manifest = None
@@ -307,7 +473,7 @@ class FaceGeoPipeline:
         if stage4 is not None:
             stage4_cfg = self.cfg.get('stage4', {}) if isinstance(self.cfg, dict) else {}
             hair_preset = stage4_cfg.get('preset', 'stubble')
-            hair_res = int(stage4_cfg.get('resolution', 512))
+            hair_res = int(stage4_cfg.get('resolution', detail_res))
             try:
                 hair_res_data = stage4.generate(
                     neutral_vertices=neutral_vertices,
@@ -322,32 +488,10 @@ class FaceGeoPipeline:
                     detail_displacement = hair_res_data['stubble_displacement_mm']
                     stubble_maps = facial_hair_manifest['stubble'].get('maps', {})
                     if stubble_maps:
-                        if detail_maps is None:
-                            detail_maps = {}
                         detail_maps['stubble_displacement'] = stubble_maps.get('displacement_png')
                         detail_maps['stubble_normal'] = stubble_maps.get('normal_png')
             except Exception as e:
                 print(f"[Stage 4 Warning] Facial hair generation failed: {e}")
-
-        # ── PBR TEXTURE ENGINE (Stages 6, 7, 8) ─────────────────────────────
-        texture_maps = {}
-        try:
-            texture_maps = self._run_texture_engine(
-                photos=[cv2.imread(str(p)) for p in photo_paths],
-                detections=detections,
-                vertices=neutral_vertices,
-                faces=faces,
-                detail_maps=detail_maps,
-                output_dir=output_dir,
-            )
-        except Exception as e:
-            print(f"[Texture Engine Warning] PBR texture generation failed: {e}")
-
-        # Merge texture maps into detail maps for export
-        if texture_maps:
-            if detail_maps is None:
-                detail_maps = {}
-            detail_maps.update(texture_maps)
 
         # ── Stage 5: Export ──────────────────────────────────────────────────
         print("[Stage 5] Exporting clean neutral OBJ and run manifest...")
@@ -363,6 +507,41 @@ class FaceGeoPipeline:
             output_dir=output_dir,
             facial_hair_manifest=facial_hair_manifest,
         )
+
+        # ── Step 4: Automated Film-Grade Blender Cycles Studio Look-Dev ────
+        render_cfg = self.cfg.get('render', {}) if isinstance(self.cfg, dict) else {}
+        if render_cfg.get('enabled', True):
+            print("[Film Look-Dev] Launching automated Blender Cycles studio engine...")
+            try:
+                from scripts.render_blender_film import parse_args, execute_film_render
+                mesh_to_render = output_paths.get('obj_path')
+                face_lod0_p = output_dir / "face_lod0.obj"
+                if face_lod0_p.exists():
+                    mesh_to_render = str(face_lod0_p)
+
+                film_render_png = output_dir / "film_render_cycles.png"
+                studio_blend = output_dir / "studio_scene.blend"
+
+                samples_val = str(render_cfg.get('samples', 128))
+                res_w = str(render_cfg.get('width', 2048))
+                res_h = str(render_cfg.get('height', 2048))
+                dev_val = str(render_cfg.get('device', 'AUTO'))
+
+                render_args = parse_args([
+                    "--mesh", str(mesh_to_render),
+                    "--textures_dir", str(output_dir),
+                    "--output", str(film_render_png),
+                    "--save_blend", str(studio_blend),
+                    "--samples", samples_val,
+                    "--resolution", res_w, res_h,
+                    "--device", dev_val,
+                ])
+                render_res = execute_film_render(render_args)
+                output_paths['film_render'] = str(render_res['rendered_image'])
+                output_paths['blend_file'] = str(render_res['blend_file'])
+                print(f"[Film Look-Dev] Look-dev turnaround and studio scene ready.")
+            except Exception as e:
+                print(f"[Film Look-Dev Warning] Blender Cycles rendering skipped: {e}")
 
         print(f"[Done] Complete. Output generated at: {output_dir}")
         return output_paths

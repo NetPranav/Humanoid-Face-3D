@@ -96,6 +96,10 @@ class MultiTierDetailFusion:
             m = _match_res(mask)
             total = total * (m > 0.1).astype(np.float32)
 
+        # Enforce Rule 4 Neck Seam Contract Invariant (bitwise boundary pinning)
+        bottom_start = int(0.85 * h)
+        total[bottom_start:, :] = 0.0
+
         # Clip strictly to metric bounds
         total = np.clip(total, -self.max_scale_mm, self.max_scale_mm)
         return total.astype(np.float32)
@@ -285,6 +289,14 @@ class MultiTierDetailFusion:
             weight_micro=weight_micro,
             mask=valid,
         )
+        # Enforce Rule 4 Neck Seam Contract Invariant
+        neck_collar = zone_masks.get('neck_collar')
+        if neck_collar is not None:
+            comp_disp[neck_collar > 0.1] = 0.0
+        neck_pinning = zone_masks.get('neck_pinning')
+        if neck_pinning is not None:
+            comp_disp[neck_pinning > 0.1] = 0.0
+        comp_disp[int(0.85 * self.resolution):, :] = 0.0
 
         # 2. Tangent normal map
         normals_rgb = self.compute_tangent_normal_map(comp_disp)

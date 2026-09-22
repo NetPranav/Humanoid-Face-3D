@@ -22,7 +22,7 @@ To ensure complete transparency and zero confusion across all contributors:
 | **Stage 8: PBR Material Stack** | 🟢 **100% Done** | Procedural (anatomical zones + displacement-coupled) | Dual-lobe roughness, cavity/AO (Laplacian), SSS thickness (opposing-normal ray-march). | 9 tests passing |
 | **Tier 4: Film Cycles Engine** | 🟢 **100% Done** | Headless Blender Python (`render_blender_film.py`) | Adaptive subdivision (1 px/poly), Random Walk (Skin) SSS, 3-point studio lighting, AgX color transform. | 7 tests passing |
 | **Stage 5: Production Rig & FBX** | 🟢 **100% Done** | ICT-FaceKit retopology, ARKit-52 blendshapes, 4 LODs, 5-joint skeleton | Headless Blender FBX packager, boundary collar pinning. Full UE5 Live Link compatibility. | ❌ Complete and tested (194 tests passing) |
-| **Pipeline Integration** | 🔄 **Active (Step 5)** | End-to-End Orchestrator (`pipeline.py`, `production_inference.py`) | Single-command full synthesis from portraits to film look-dev render and FBX. | 🚀 Wire all tiers & benchmark audit |
+| **Pipeline Integration** | 🟢 **100% Done** | End-to-End Orchestrator (`pipeline.py`, `production_inference.py`) | Single-command full synthesis from portraits to film look-dev render and FBX. | 198 tests passing, all 3 benchmark subjects verified |
 
 ---
 

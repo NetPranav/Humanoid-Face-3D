@@ -20,10 +20,10 @@
   },
   "stubble": {
     "generated": true,
-    "max_stubble_relief_mm": 0.7137181758880615,
+    "max_stubble_relief_mm": 0.699144184589386,
     "maps": {
-      "displacement_png": "/kaggle/working/outputs/production_batch/carell/facial_hair/head_stubble_displacement_16bit.png",
-      "normal_png": "/kaggle/working/outputs/production_batch/carell/facial_hair/head_stubble_normal_map.png",
+      "displacement_png": "/Users/pranav/Project Folder/3d Model /outputs/production_batch/carell/facial_hair/head_stubble_displacement_16bit.png",
+      "normal_png": "/Users/pranav/Project Folder/3d Model /outputs/production_batch/carell/facial_hair/head_stubble_normal_map.png",
       "p99_scale_mm": "1.5"
     }
   },
@@ -33,10 +33,10 @@
     "num_vertices": 480,
     "num_triangles": 320,
     "files": {
-      "cards_obj": "/kaggle/working/outputs/production_batch/carell/facial_hair/facial_hair_cards.obj",
-      "alpha_png": "/kaggle/working/outputs/production_batch/carell/facial_hair/hair_card_alpha.png",
-      "normal_png": "/kaggle/working/outputs/production_batch/carell/facial_hair/hair_card_normal.png",
-      "skinning_json": "/kaggle/working/outputs/production_batch/carell/facial_hair/hair_cards_skinning.json"
+      "cards_obj": "/Users/pranav/Project Folder/3d Model /outputs/production_batch/carell/facial_hair/facial_hair_cards.obj",
+      "alpha_png": "/Users/pranav/Project Folder/3d Model /outputs/production_batch/carell/facial_hair/hair_card_alpha.png",
+      "normal_png": "/Users/pranav/Project Folder/3d Model /outputs/production_batch/carell/facial_hair/hair_card_normal.png",
+      "skinning_json": "/Users/pranav/Project Folder/3d Model /outputs/production_batch/carell/facial_hair/hair_cards_skinning.json"
     }
   }
 }

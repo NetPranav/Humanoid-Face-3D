@@ -264,6 +264,10 @@ class PhotometricDetailExtractor:
 
             disp = disp * collar_weight
 
+        # Always enforce bitwise zero on the bottom collar rows (Rule 4 invariant)
+        bottom_start = int(0.85 * h)
+        disp[bottom_start:, :] = 0.0
+
         return disp.astype(np.float32)
 
     # -----------------------------------------------------------------------

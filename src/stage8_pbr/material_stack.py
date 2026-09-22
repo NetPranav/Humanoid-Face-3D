@@ -606,5 +606,8 @@ class PBRMaterialStack:
         sss_8bit = (np.clip(result['sss_thickness'], 0, 1) * 255).astype(np.uint8)
         cv2.imwrite(str(sss_path), sss_8bit)
         paths['sss_thickness_map'] = str(sss_path)
+        paths['sss_thickness'] = str(sss_path)
+        paths['cavity'] = str(cavity_path)
+        paths['roughness'] = str(roughness_path)
 
         return paths

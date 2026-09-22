@@ -49,9 +49,9 @@ class FBXPackager:
 
     def package_fbx(
         self,
-        mesh_obj: Union[str, Path],
-        blendshapes_json: Union[str, Path],
-        output_fbx: Union[str, Path],
+        mesh_obj: Optional[Union[str, Path]] = None,
+        blendshapes_json: Optional[Union[str, Path]] = None,
+        output_fbx: Optional[Union[str, Path]] = None,
         armature_json: Optional[Union[str, Path]] = None,
         lod_manifest: Optional[Union[str, Path]] = None,
         hair_cards_obj: Optional[Union[str, Path]] = None,
@@ -60,6 +60,7 @@ class FBXPackager:
         displacement_map: Optional[Union[str, Path]] = None,
         render_preview: Optional[Union[str, Path]] = None,
         timeout_seconds: int = 300,
+        **kwargs,
     ) -> Dict[str, Any]:
         """
         Packages production FBX asset via headless Blender.
@@ -67,6 +68,15 @@ class FBXPackager:
         Returns:
             dict containing execution status, output paths, and generated asset manifest.
         """
+        mesh_obj = mesh_obj or kwargs.get("mesh_obj_path")
+        blendshapes_json = blendshapes_json or kwargs.get("blendshapes_json_path")
+        output_fbx = output_fbx or kwargs.get("output_fbx_path")
+        armature_json = armature_json or kwargs.get("armature_json_path")
+        lod_manifest = lod_manifest or kwargs.get("lod_manifest_path")
+
+        if mesh_obj is None or blendshapes_json is None or output_fbx is None:
+            raise ValueError("mesh_obj, blendshapes_json, and output_fbx are required arguments.")
+
         out_path = Path(output_fbx)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
