@@ -66,7 +66,7 @@ KERNEL_CONFIGS = {
         "kernel_sources": ["nightshowdown/phase-3-detail-gan-train"],
     },
     "dataset_reextract": {
-        "slug": "dataset-reextract-subdiv2-smooth",
+        "slug": "dataset-re-extract-subdiv2-c2-smoothing",
         "title": "Dataset Re-Extract: Subdiv2 + C2 Smoothing",
         "notebook": "dataset_reextract_subdiv2.ipynb",
         "enable_gpu": True,

@@ -384,7 +384,7 @@ print("\\n🎉 Dataset re-extraction complete! Outputs ready for download.")
 
     # Kernel metadata for Kaggle push
     metadata = {
-        "id": "nightshowdown/dataset-reextract-subdiv2-smooth",
+        "id": "nightshowdown/dataset-re-extract-subdiv2-c2-smoothing",
         "title": "Dataset Re-Extract: Subdiv2 + C2 Smoothing",
         "code_file": "dataset_reextract_subdiv2.ipynb",
         "language": "python",
