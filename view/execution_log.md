@@ -275,3 +275,12 @@ Kernel version 1 successfully pushed.  Please check progress at https://www.kagg
 `[2026-09-22 17:45:12]` ❌ Error pushing `nightshowdown/dataset-reextract-subdiv2-smooth`:
 /Users/pranav/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
   warnings.warn(
+`[2026-09-22 17:46:04]` 📊 Status `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing`: nightshowdown/dataset-re-extract-subdiv2-c2-smoothing has status "KernelWorkerStatus.RUNNING"
+`[2026-09-22 17:46:33]` 📊 Status `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing`: nightshowdown/dataset-re-extract-subdiv2-c2-smoothing has status "KernelWorkerStatus.RUNNING"
+`[2026-09-22 17:47:04]` 📊 Status `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing`: nightshowdown/dataset-re-extract-subdiv2-c2-smoothing has status "KernelWorkerStatus.RUNNING"
+`[2026-09-22 17:47:25]` 📊 Status `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing`: nightshowdown/dataset-re-extract-subdiv2-c2-smoothing has status "KernelWorkerStatus.RUNNING"
+`[2026-09-22 17:51:04]` 📊 Status `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing`: nightshowdown/dataset-re-extract-subdiv2-c2-smoothing has status "KernelWorkerStatus.RUNNING"
+`[2026-09-22 18:15:32]` 📊 Status `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing`: nightshowdown/dataset-re-extract-subdiv2-c2-smoothing has status "KernelWorkerStatus.RUNNING"
+`[2026-09-22 22:55:35]` 📊 Status `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing`: nightshowdown/dataset-re-extract-subdiv2-c2-smoothing has status "KernelWorkerStatus.COMPLETE"
+`[2026-09-22 22:55:43]` 📥 Pulling output for `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing` to /Users/pranav/Project Folder/3d Model /outputs/dataset-re-extract-subdiv2-c2-smoothing...
+`[2026-09-22 22:56:22]` ✅ Outputs downloaded to /Users/pranav/Project Folder/3d Model /outputs/dataset-re-extract-subdiv2-c2-smoothing
