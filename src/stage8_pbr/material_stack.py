@@ -253,9 +253,10 @@ class CavityMapGenerator:
     ambient occlusion.
     """
 
-    def __init__(self, strength: float = 0.35, blur_sigma: float = 1.0):
+    def __init__(self, strength: float = 0.35, blur_sigma: float = 1.0, mode: str = "curvature"):
         self.strength = strength
         self.blur_sigma = blur_sigma
+        self.mode = mode
 
     def generate(
         self,
@@ -273,7 +274,8 @@ class CavityMapGenerator:
         Returns
         -------
         cavity : (H, W) float32 in [0, 1]
-            0.5 = flat, <0.5 = concave (darkened), >0.5 = convex (brightened)
+            mode='film_ao'   : 1.0 = flat skin, <1.0 = pore/crevasse shadow darkening
+            mode='curvature' : 0.5 = flat, <0.5 = concave, >0.5 = convex
         """
         h, w = displacement_map.shape[:2]
 
@@ -289,14 +291,19 @@ class CavityMapGenerator:
         # Discrete Laplacian (second-order derivative, measures curvature)
         laplacian = cv2.Laplacian(disp_smooth, cv2.CV_32F, ksize=5)
 
-        # Scale and center around 0.5
-        cavity = 0.5 + self.strength * laplacian
-
-        # Clamp to valid range
-        cavity = np.clip(cavity, 0.0, 1.0)
-
-        if valid_mask is not None:
-            cavity = cavity * valid_mask + 0.5 * (1.0 - valid_mask)
+        if self.mode == "film_ao":
+            # Film-grade pore-depth light trapping:
+            # Cavity(u,v) = clip(1.0 - strength * max(0, ∇²D), 0.0, 1.0)
+            concavity = np.maximum(0.0, laplacian)
+            cavity = np.clip(1.0 - self.strength * concavity, 0.0, 1.0)
+            if valid_mask is not None:
+                cavity = cavity * valid_mask + 1.0 * (1.0 - valid_mask)
+        else:
+            # Centered curvature mode: depressions (∇²D > 0) darken below 0.5
+            cavity = 0.5 - self.strength * laplacian
+            cavity = np.clip(cavity, 0.0, 1.0)
+            if valid_mask is not None:
+                cavity = cavity * valid_mask + 0.5 * (1.0 - valid_mask)
 
         return cavity.astype(np.float32)
 
