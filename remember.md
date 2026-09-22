@@ -14,14 +14,15 @@ To ensure complete transparency and zero confusion across all contributors:
 | **Stage 1: Identity Regression** | 🟢 **100% Done** | Pre-trained MICA (MPI) + Runtime Pixel3DMM dense contour fitter | Coarse head shape, metric skull proportions ($\|\beta_a - \beta_b\| \in [4.6, 7.2]$). | ❌ No retraining needed (Pretrained MICA is authoritative) |
 | **Stage 1.5: Macro Residuals** | 🟢 **100% Done** | Graph Convolutional Network (`residual_net.py`) | Breaks linear FLAME PCA ceiling with bitwise collar pinning ($\Delta v \equiv 0$). | Ready for inference |
 | **Stage 2: Expression & Pose** | 🟢 **100% Done** | Pre-trained SMIRK | Canonical neutral normalization ($\psi=0, \theta=0$). | ❌ No training needed (Invariant enforced) |
-| **Tier 2: Meso Geometry** | 🔄 **Active (Step 10.1)** | Photometric Shape-from-Shading (`photometric_detail.py`) | Extracts real person-specific wrinkles (crow's feet, laugh lines, brow furrows) directly from photos. | 🚀 Implement multi-scale photometric filter |
-| **Tier 3: Micro Detail** | 🔄 **Active (Step 10.2)** | 4K Anatomical Zone Synthesis (`anatomical_pores.py`) | 50-micron follicular pores, T-zone follicles, cheek grain, lip striations, neck bands. | 🚀 Implement anatomical cellular pore engine |
+| **Tier 2: Meso Geometry** | 🟢 **100% Done** | Photometric Shape-from-Shading (`photometric_detail.py`) | Extracts real person-specific wrinkles (crow's feet, laugh lines, brow furrows) directly from photos. | 10 tests passing |
+| **Tier 3: Micro Detail** | 🟢 **100% Done** | 4K Anatomical Zone Synthesis (`anatomical_pores.py`) | 50-micron follicular pores, T-zone follicles, cheek grain, lip striations, neck bands. | 8 tests passing |
 | **Stage 4: Facial Hair & Stubble**| 🟢 **100% Done** | Procedural geometry & density maps | Stubble displacement (`stubble.py`), 3D hair cards (`cards.py`), collar pinning ($\Delta v \equiv 0$). | ❌ Pure math/geometry (No GPU training) |
 | **Stage 6: UV Texture Projection** | 🟢 **100% Done** | Pure math (NumPy/OpenCV) | Multi-view backprojection with cosine-weighted blending, z-buffer visibility. 2048² projected texture. | ❌ Pure geometry (No GPU training) |
 | **Stage 7: AI Delighting + Inpainting** | 🟢 **100% Done** | Pre-trained DECA albedo decoder + procedural Gaussian dilation | Strips environment lighting → clean diffuse albedo. Fills unseen UV regions. | Production ready |
-| **Stage 8: PBR Material Stack** | 🟢 **100% Done** | Procedural (anatomical zones + displacement-coupled) | Dual-lobe roughness, cavity/AO (Laplacian), SSS thickness (opposing-normal ray-march). | 🔄 Coupling to Tier 2+3 displacement |
-| **Tier 4: Film Cycles Engine** | 🔄 **Active (Step 10.4)** | Headless Blender Python (`render_blender_film.py`) | Adaptive subdivision (1 px/poly), Random Walk (Skin) SSS, 3-point studio lighting, AgX color transform. | 🚀 Implement headless `.blend` generator |
-| **Stage 5: Production Rig & FBX** | 🟢 **100% Done** | ICT-FaceKit retopology, ARKit-52 blendshapes, 4 LODs, 5-joint skeleton | Headless Blender FBX packager, boundary collar pinning. Full UE5 Live Link compatibility. | ❌ Complete and tested (160 tests passing) |
+| **Stage 8: PBR Material Stack** | 🟢 **100% Done** | Procedural (anatomical zones + displacement-coupled) | Dual-lobe roughness, cavity/AO (Laplacian), SSS thickness (opposing-normal ray-march). | 9 tests passing |
+| **Tier 4: Film Cycles Engine** | 🟢 **100% Done** | Headless Blender Python (`render_blender_film.py`) | Adaptive subdivision (1 px/poly), Random Walk (Skin) SSS, 3-point studio lighting, AgX color transform. | 7 tests passing |
+| **Stage 5: Production Rig & FBX** | 🟢 **100% Done** | ICT-FaceKit retopology, ARKit-52 blendshapes, 4 LODs, 5-joint skeleton | Headless Blender FBX packager, boundary collar pinning. Full UE5 Live Link compatibility. | ❌ Complete and tested (194 tests passing) |
+| **Pipeline Integration** | 🔄 **Active (Step 5)** | End-to-End Orchestrator (`pipeline.py`, `production_inference.py`) | Single-command full synthesis from portraits to film look-dev render and FBX. | 🚀 Wire all tiers & benchmark audit |
 
 ---
 
