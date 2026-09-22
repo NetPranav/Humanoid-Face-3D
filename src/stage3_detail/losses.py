@@ -72,3 +72,71 @@ def identity_preservation_loss(
 def photometric_consistency_loss(shaded_render: torch.Tensor, shaded_target: torch.Tensor) -> torch.Tensor:
     """Penalizes directional illumination shading discrepancies to prevent surface inversion."""
     return F.l1_loss(shaded_render, shaded_target)
+
+
+def high_frequency_fft_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    mask: Optional[torch.Tensor] = None,
+    high_pass_cutoff: float = 0.1
+) -> torch.Tensor:
+    """
+    Frequency-domain spectral loss using 2D Fast Fourier Transform (FFT).
+    Directly penalizes the loss of high-frequency power (pores, wrinkles, micro-creases)
+    to prevent GAN mode collapse under L1 dominance.
+    """
+    if mask is not None:
+        p = pred * mask
+        t = target * mask
+    else:
+        p = pred
+        t = target
+
+    # 2D Real FFT across spatial dimensions (H, W)
+    fft_p = torch.fft.rfft2(p.float(), norm='ortho')
+    fft_t = torch.fft.rfft2(t.float(), norm='ortho')
+
+    # Log magnitude spectra
+    mag_p = torch.log(torch.abs(fft_p) + 1e-6)
+    mag_t = torch.log(torch.abs(fft_t) + 1e-6)
+
+    # High-pass filter mask: frequency radii using original spatial dimensions
+    orig_h, orig_w = pred.shape[-2], pred.shape[-1]
+    fy = torch.fft.fftfreq(orig_h, device=pred.device)[:, None]
+    fx = torch.fft.rfftfreq(orig_w, device=pred.device)[None, :]
+    freq_radius = torch.sqrt(fy ** 2 + fx ** 2)
+    hp_weight = (freq_radius >= high_pass_cutoff).float()
+
+    diff = torch.abs(mag_p - mag_t) * hp_weight
+    return diff.mean()
+
+
+def gradient_difference_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    mask: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    """
+    Penalizes first-order spatial gradient discrepancies along X and Y axes.
+    Preserves razor-sharp skin pores and micro-edges.
+    """
+    # Horizontal gradients
+    pred_dx = pred[:, :, :, 1:] - pred[:, :, :, :-1]
+    target_dx = target[:, :, :, 1:] - target[:, :, :, :-1]
+
+    # Vertical gradients
+    pred_dy = pred[:, :, 1:, :] - pred[:, :, :-1, :]
+    target_dy = target[:, :, 1:, :] - target[:, :, :-1, :]
+
+    loss_x = torch.abs(pred_dx - target_dx)
+    loss_y = torch.abs(pred_dy - target_dy)
+
+    if mask is not None:
+        mask_x = mask[:, :, :, 1:] * mask[:, :, :, :-1]
+        mask_y = mask[:, :, 1:, :] * mask[:, :, :-1, :]
+        loss = (loss_x * mask_x).sum() / (mask_x.sum() + 1e-8) + (loss_y * mask_y).sum() / (mask_y.sum() + 1e-8)
+    else:
+        loss = loss_x.mean() + loss_y.mean()
+
+    return loss
+

@@ -204,8 +204,11 @@ class DelightUNet(nn.Module if HAS_TORCH else object):
         e5 = self.enc5(self.pool(e4))
         e6 = self.enc6(self.pool(e5))
 
-        # Bottleneck
-        b = self.bottleneck(self.pool(e6))
+        # Bottleneck (ensure spatial size is at least 2x2 for InstanceNorm2d compatibility)
+        p6 = self.pool(e6)
+        if p6.shape[2] < 2 or p6.shape[3] < 2:
+            p6 = F.interpolate(p6, size=(max(2, p6.shape[2]), max(2, p6.shape[3])), mode='nearest')
+        b = self.bottleneck(p6)
 
         # Decoder with skip connections
         d6 = self.dec6(torch.cat([F.interpolate(b, e6.shape[2:], mode='bilinear', align_corners=False), e6], dim=1))

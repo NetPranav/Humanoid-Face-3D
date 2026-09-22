@@ -28,6 +28,8 @@ from src.stage3_detail.losses import (
     adversarial_loss_g, adversarial_loss_d,
     r1_gradient_penalty, reconstruction_loss_masked,
     identity_preservation_loss,
+    high_frequency_fft_loss,
+    gradient_difference_loss,
 )
 from src.stage3_detail.data import UVDisplacementDataset
 
@@ -35,9 +37,11 @@ HYPERPARAMS = {
     'lr_g': 2e-4,
     'lr_d': 2e-4,
     'adam_betas': (0.0, 0.99),
-    'recon_lambda_start': 100.0,
-    'recon_lambda_end': 10.0,
-    'recon_anneal_steps': 50000,
+    'recon_lambda_start': 10.0,      # Balanced to prevent 100:1 L1 mode collapse
+    'recon_lambda_end': 1.0,         # Anneals to 1:1 with adversarial loss
+    'recon_anneal_steps': 15000,
+    'fft_lambda': 1.0,               # Preserves high-frequency spectral power (pores/wrinkles)
+    'grad_lambda': 2.0,              # Preserves razor-sharp pore/wrinkle boundaries
     'r1_gamma': 10.0,
     'id_lambda': 0.0,  # Kept at 0.0 until differentiable mesh rendering (nvdiffrast) is integrated
     'ema_decay': 0.999,
@@ -67,6 +71,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--resolution', type=int, default=512, help="Target training resolution (e.g. 512 or 1024)")
     parser.add_argument('--checkpoint_every', type=int, default=250, help="Steps between checkpoint saves")
+    parser.add_argument('--log_every', type=int, default=50, help="Steps between progress logs")
     parser.add_argument('--resume', type=str, default=None, help="Path to checkpoint_latest.pt to resume training")
     args = parser.parse_args()
 
@@ -113,10 +118,10 @@ def main():
             for p in arcface_model.parameters():
                 p.requires_grad = False
             if rank == 0:
-                print(f"[Stage 3] Initialized frozen ArcFace identity preservation model from {args.arcface_checkpoint}")
+                print(f"[Stage 3] Initialized frozen ArcFace identity preservation model from {args.arcface_checkpoint}", flush=True)
         except Exception as e:
             if rank == 0:
-                print(f"[Stage 3] Note: Could not load ArcFace model from {args.arcface_checkpoint}: {e}")
+                print(f"[Stage 3] Note: Could not load ArcFace model from {args.arcface_checkpoint}: {e}", flush=True)
             arcface_model = None
 
     if is_distributed:
@@ -133,9 +138,11 @@ def main():
     scaler_g = GradScaler('cuda', enabled=torch.cuda.is_available())
     scaler_d = GradScaler('cuda', enabled=torch.cuda.is_available())
 
+    num_workers = 2 if torch.cuda.is_available() else 0
+    pin_memory = torch.cuda.is_available()
     dataset = UVDisplacementDataset(args.data_dir, is_train=True, target_resolution=args.resolution)
     sampler = DistributedSampler(dataset, shuffle=True) if is_distributed else None
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=2, pin_memory=True)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=num_workers, pin_memory=pin_memory)
 
     start_time = time.time()
     step = 0
@@ -209,7 +216,15 @@ def main():
                 g_adv = adversarial_loss_g(d_fake_for_g)
                 recon_lambda = get_recon_lambda(step, HYPERPARAMS)
                 recon_loss = reconstruction_loss_masked(fake_disp, real_disp, mask)
-                total_g_loss = g_adv + recon_lambda * recon_loss
+                fft_loss = high_frequency_fft_loss(fake_disp, real_disp, mask)
+                grad_loss = gradient_difference_loss(fake_disp, real_disp, mask)
+
+                total_g_loss = (
+                    g_adv +
+                    recon_lambda * recon_loss +
+                    HYPERPARAMS['fft_lambda'] * fft_loss +
+                    HYPERPARAMS['grad_lambda'] * grad_loss
+                )
 
                 id_loss_val = 0.0
                 if arcface_model is not None and 'crop' in batch and HYPERPARAMS['id_lambda'] > 0.0:
@@ -226,8 +241,8 @@ def main():
             if rank == 0:
                 update_ema(ema_generator, g_raw, decay=HYPERPARAMS['ema_decay'])
 
-                # Log progress & diversity metrics every 100 steps
-                if step % 100 == 0 or step == 1:
+                # Log progress & diversity metrics every args.log_every steps
+                if step % args.log_every == 0 or step == 1:
                     batch_std = fake_disp.std().item()
                     d_acc_real = (d_real > 0).float().mean().item() * 100.0
                     d_acc_fake = (d_fake < 0).float().mean().item() * 100.0
@@ -236,8 +251,9 @@ def main():
                     print(
                         f"Step {step:06d}/{args.total_steps} | "
                         f"D Loss: {d_loss.item():.4f} (R:{d_acc_real:.1f}% F:{d_acc_fake:.1f}%) | "
-                        f"G Loss: {total_g_loss.item():.4f} (Adv: {g_adv.item():.4f}, Recon: {recon_loss.item():.4f}{id_msg}, λ: {recon_lambda:.1f}) | "
-                        f"Disp Std: {batch_std:.4f}{warning_msg}"
+                        f"G Loss: {total_g_loss.item():.4f} (Adv: {g_adv.item():.4f}, Recon: {recon_loss.item():.4f}, FFT: {fft_loss.item():.4f}, Grad: {grad_loss.item():.4f}{id_msg}, λ: {recon_lambda:.1f}) | "
+                        f"Disp Std: {batch_std:.4f}{warning_msg}",
+                        flush=True
                     )
 
                 if step % HYPERPARAMS['checkpoint_every'] == 0:
@@ -269,6 +285,9 @@ def main():
                     print(f"--> Checkpoint saved at step {step:06d} (latest & ema_generator retained, older step files pruned)")
                 # Save periodic checkpoint at rank 0
                 pass
+
+            if step >= args.total_steps:
+                break
 
             # ── 4. Graceful Session Timeout Guard (All Ranks) ─────
             should_stop = torch.tensor([1 if (time.time() - start_time) / 3600 > HYPERPARAMS['max_session_hours'] else 0], device=device)

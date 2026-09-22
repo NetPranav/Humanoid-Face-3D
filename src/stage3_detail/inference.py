@@ -23,6 +23,7 @@ from src.stage3_detail.rasterizer import (
     compute_vertex_normals,
     rasterize_uv_maps
 )
+from src.utils.subdivision import loop_subdivide
 
 
 class DetailSynthesizer:
@@ -73,11 +74,10 @@ class DetailSynthesizer:
         self.generator.eval()
 
     def _resolve_checkpoint(self, path: Optional[Union[str, Path]]) -> Path:
-        if path and Path(path).exists():
+        if path:
             return Path(path)
         root = Path(__file__).resolve().parent.parent.parent
         candidates = [
-            Path(path) if path else None,
             root / 'models_cache' / 'stage3_detail' / 'ema_generator.pt',
             root / 'models_cache' / 'stage3_detail' / 'generator_latest.pt',
             root / 'checkpoints' / 'stage3_detail' / 'ema_generator.pt',
@@ -91,15 +91,16 @@ class DetailSynthesizer:
         for c in candidates:
             if c is not None and c.exists():
                 return c
-        return Path(path) if path else candidates[1]
+        return candidates[0]
 
     def _resolve_stats(self, path: Optional[Union[str, Path]]) -> Path:
-        if path and Path(path).exists():
+        if path:
             return Path(path)
         root = Path(__file__).resolve().parent.parent.parent
         candidates = [
-            Path(path) if path else None,
             root / 'models_cache' / 'stage3_detail' / 'normalization_stats.json',
+            root / 'data' / 'real_scan_displacement_dataset_1024' / 'normalization_stats.json',
+            root / 'outputs' / 'real_scan_displacement_dataset_1024' / 'normalization_stats.json',
             root / 'outputs' / 'kaggle_phase3_gan' / 'extracted' / 'normalization_stats.json',
             root / 'outputs' / 'uv_displacement_dataset_1024' / 'normalization_stats.json',
             Path('/kaggle/working/checkpoints/stage3_detail/normalization_stats.json'),
@@ -111,7 +112,7 @@ class DetailSynthesizer:
         for c in candidates:
             if c is not None and c.exists():
                 return c
-        return Path(path) if path else candidates[1]
+        return candidates[0]
 
     def _load_weights(self, path: Path):
         try:
@@ -152,20 +153,54 @@ class DetailSynthesizer:
         from canonical neutral geometry and multi-view perceptual features.
         """
         # 1. Compute vertex unit normals and rasterize UV spatial conditions
-        vert_normals = compute_vertex_normals(neutral_vertices, faces)
+        # To eliminate low-poly triangular facet step edges, subdivide coarse mesh if needed
+        if len(neutral_vertices) < 15000:
+            v_raster, f_raster, uv_raster, uv_f_raster = loop_subdivide(
+                neutral_vertices, faces, self.uv_coords, self.uv_faces, levels=1
+            )
+        else:
+            v_raster, f_raster = neutral_vertices, faces
+            uv_raster, uv_f_raster = self.uv_coords, self.uv_faces
+
+        vert_normals = compute_vertex_normals(v_raster, f_raster)
         _, pos_map, norm_map, mask_map = rasterize_uv_maps(
-            flame_verts_m=neutral_vertices,
+            flame_verts_m=v_raster,
             flame_normals=vert_normals,
-            uv_coords=self.uv_coords,
-            uv_faces=self.uv_faces,
-            flame_faces=faces,
+            uv_coords=uv_raster,
+            uv_faces=uv_f_raster,
+            flame_faces=f_raster,
             resolution=resolution
         )
 
-        # 2. Normalize position field to zero-mean unit-variance
-        pos_norm = (pos_map - pos_map.mean(axis=(0, 1), keepdims=True)) / (
-            pos_map.std(axis=(0, 1), keepdims=True) + 1e-8
-        )
+        # C² Gaussian smoothing to fully eliminate polygonal triangle step-edge artifacts.
+        # σ=8.0 is calibrated to blur away barycentric interpolation discontinuities
+        # at triangle boundaries while preserving facial morphology at UV resolution.
+        COND_SIGMA = 8.0
+        valid_px = (mask_map > 0)
+        if np.any(valid_px):
+            # Normalized convolution for position map: smooth within the mask
+            mask_f = valid_px.astype(np.float32)
+            pos_signal = pos_map * mask_f[..., None]
+            pos_blurred = cv2.GaussianBlur(pos_signal, (0, 0), sigmaX=COND_SIGMA, sigmaY=COND_SIGMA)
+            mask_blurred = cv2.GaussianBlur(mask_f, (0, 0), sigmaX=COND_SIGMA, sigmaY=COND_SIGMA)
+            safe_mask = (mask_blurred > 0.01)
+            pos_smooth = np.zeros_like(pos_map)
+            pos_smooth[safe_mask] = pos_blurred[safe_mask] / mask_blurred[safe_mask, None]
+            pos_map[valid_px] = pos_smooth[valid_px]
+
+            # Normalized convolution for normal map: decode, smooth, renormalize
+            n_unnorm = (norm_map - 0.5) * 2.0
+            n_signal = n_unnorm * mask_f[..., None]
+            n_blurred = cv2.GaussianBlur(n_signal, (0, 0), sigmaX=COND_SIGMA, sigmaY=COND_SIGMA)
+            n_smooth = np.zeros_like(n_unnorm)
+            n_smooth[safe_mask] = n_blurred[safe_mask] / mask_blurred[safe_mask, None]
+            n_len = np.linalg.norm(n_smooth, axis=-1, keepdims=True) + 1e-8
+            norm_map[valid_px] = ((n_smooth / n_len)[valid_px] + 1.0) * 0.5
+
+        # 2. Normalize position field to [0, 1] using training data.py contract:
+        #    pos_u8 was saved as clip((pos + 0.20) / 0.40 * 255, 0, 255) → data.py reads / 255.0
+        #    So the network expects pos in [0, 1] from this affine mapping.
+        pos_norm = np.clip((pos_map + 0.20) / 0.40, 0.0, 1.0)
         pos_tensor = torch.from_numpy(pos_norm).permute(2, 0, 1).unsqueeze(0).float().to(self.device)
         norm_tensor = torch.from_numpy(norm_map).permute(2, 0, 1).unsqueeze(0).float().to(self.device)
 

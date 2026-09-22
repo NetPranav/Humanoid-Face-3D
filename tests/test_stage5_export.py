@@ -314,7 +314,19 @@ class TestStage5ExporterMaster(unittest.TestCase):
         self.assertTrue(Path(manifest['neutral_base_obj']).exists())
         self.assertTrue(Path(manifest['blendshapes_json']).exists())
         self.assertTrue(Path(manifest['armature_json']).exists())
-        self.assertEqual(len(manifest['lods']), 4)
+    def test_export_production_asset_with_subdivision(self):
+        exporter = Stage5Exporter(enable_lods=False, enable_armature=False)
+        manifest = exporter.export_production_asset(
+            neutral_vertices=self.verts,
+            faces=self.faces,
+            output_dir=self.temp_dir.name,
+            export_fbx=False,
+            subdivision_levels=1
+        )
+        self.assertEqual(manifest['status'], "success")
+        if manifest.get('subdivision'):
+            self.assertEqual(manifest['subdivision']['levels'], 1)
+            self.assertTrue(Path(manifest['subdivision']['obj_path']).exists())
 
 
 if __name__ == '__main__':

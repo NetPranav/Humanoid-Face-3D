@@ -70,7 +70,10 @@ class MICAIdentityDataset(Dataset):
         rng = np.random.default_rng(self.seed)
         shuffled_subjects = rng.permutation(unique_subjects).tolist()
 
-        n_val = max(1, int(len(shuffled_subjects) * self.val_ratio))
+        if self.val_ratio <= 0.0:
+            n_val = 0
+        else:
+            n_val = max(1, int(len(shuffled_subjects) * self.val_ratio))
         val_subjects = set(shuffled_subjects[:n_val])
         train_subjects = set(shuffled_subjects[n_val:])
 

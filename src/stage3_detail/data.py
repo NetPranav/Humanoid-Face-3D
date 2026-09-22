@@ -12,6 +12,14 @@ except ImportError:
     class Dataset:
         pass
 
+def _extract_subject_id(p: Path) -> str:
+    """Robust subject ID extraction (supports 'subject_001_...', 'sub001_...', 'carell_...')."""
+    stem = p.stem
+    if stem.startswith('subject_'):
+        return '_'.join(stem.split('_')[:2])
+    return stem.split('_')[0]
+
+
 class UVDisplacementDataset(Dataset):
     """
     PyTorch Dataset loading preprocessed UV displacement map pairs,
@@ -28,15 +36,7 @@ class UVDisplacementDataset(Dataset):
                 "Ensure scripts/build_uv_displacement_dataset.py has executed successfully."
             )
 
-        # Robust subject ID extraction (supports 'subject_001_...', 'sub001_...', 'carell_...')
-        def get_subject_id(p: Path) -> str:
-            stem = p.stem
-            if stem.startswith('subject_'):
-                return '_'.join(stem.split('_')[:2])
-            return stem.split('_')[0]
-
-        self.get_subject_id = get_subject_id
-        subjects = sorted({get_subject_id(p) for p in self.disp_files})
+        subjects = sorted({_extract_subject_id(p) for p in self.disp_files})
         rng = random.Random(1337)
         rng.shuffle(subjects)
         if len(subjects) <= 1:
@@ -48,7 +48,7 @@ class UVDisplacementDataset(Dataset):
 
         self.files = [
             p for p in self.disp_files
-            if (get_subject_id(p) in val_subjects) != is_train
+            if (_extract_subject_id(p) in val_subjects) != is_train
         ]
 
         if len(self.files) == 0:

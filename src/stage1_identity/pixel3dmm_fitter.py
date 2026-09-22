@@ -268,7 +268,8 @@ class DenseFLAMEFitter:
 
     def _compute_vertex_normals(self, verts: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
         """Compute per-vertex normals from mesh topology (differentiable)."""
-        if verts.dim() == 2:
+        is_single = (verts.dim() == 2)
+        if is_single:
             verts = verts.unsqueeze(0)
 
         v0 = verts[:, faces[:, 0]]
@@ -283,6 +284,8 @@ class DenseFLAMEFitter:
             vertex_normals.scatter_add_(1, faces[:, i:i+1].unsqueeze(0).expand_as(verts), face_normals)
 
         vertex_normals = F.normalize(vertex_normals, dim=-1, eps=1e-6)
+        if is_single:
+            vertex_normals = vertex_normals.squeeze(0)
         return vertex_normals
 
     def fit(

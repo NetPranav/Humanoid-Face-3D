@@ -17,10 +17,10 @@ class MultiViewAttention(nn.Module):
     Cross-attention mechanism: UV-space bottleneck spatial queries attend to
     pooled per-view camera image features to resolve fine geometric details.
     """
-    def __init__(self, feature_dim: int, num_heads: int = 8):
+    def __init__(self, query_dim: int, kv_dim: int = 512, num_heads: int = 8):
         super().__init__()
-        self.feature_proj = nn.Linear(feature_dim, feature_dim)
-        self.cross_attn = nn.MultiheadAttention(feature_dim, num_heads, batch_first=True)
+        self.feature_proj = nn.Linear(kv_dim, query_dim)
+        self.cross_attn = nn.MultiheadAttention(query_dim, num_heads, batch_first=True)
 
     def forward(self, query_features: torch.Tensor, per_view_features: torch.Tensor) -> torch.Tensor:
         """
@@ -60,7 +60,7 @@ class DetailGenerator(nn.Module):
         # Cross-attention bottleneck
         bottleneck_c = bc * 8
         self.attn_norm = nn.LayerNorm(bottleneck_c)
-        self.mv_attn = MultiViewAttention(bottleneck_c)
+        self.mv_attn = MultiViewAttention(query_dim=bottleneck_c, kv_dim=backbone_feature_dim)
 
         # AdaIN identity and expression conditioning projection
         self.style_proj = nn.Linear(identity_dim + expression_dim, bottleneck_c * 2)
@@ -70,6 +70,17 @@ class DetailGenerator(nn.Module):
         self.dec4 = self._conv_block(bc * 16, bc * 4)
         self.dec3 = self._conv_block(bc * 8, bc * 2)
         self.dec2 = self._conv_block(bc * 4, bc)
+
+        # Residual smoothing block on e1 skip connection to attenuate
+        # any residual polygonal triangle-edge artifacts from the raw
+        # conditioning maps before they reach the final output layer.
+        self.e1_smooth = nn.Sequential(
+            nn.Conv2d(bc, bc, kernel_size=3, padding=1, groups=bc, bias=False),
+            nn.Conv2d(bc, bc, kernel_size=1, bias=False),
+            nn.InstanceNorm2d(bc, affine=True),
+            nn.LeakyReLU(0.2, inplace=True),
+        )
+
         self.dec1 = nn.Conv2d(bc * 2, out_channels, kernel_size=1)
 
         self.out_act = nn.Tanh()  # Outputs bounded in [-1, 1]
@@ -135,6 +146,8 @@ class DetailGenerator(nn.Module):
         d4 = self.dec4(torch.cat([up(d5), e4], dim=1))
         d3 = self.dec3(torch.cat([up(d4), e3], dim=1))
         d2 = self.dec2(torch.cat([up(d3), e2], dim=1))
-        out = self.dec1(torch.cat([up(d2), e1], dim=1))
+        # Residual smoothing on e1 skip: attenuate triangle-edge artifacts
+        e1_clean = e1 + self.e1_smooth(e1)
+        out = self.dec1(torch.cat([up(d2), e1_clean], dim=1))
 
         return self.out_act(out)

@@ -67,6 +67,7 @@ class Stage5Exporter:
         stylization_params: Optional[Union[StylizationParameters, Dict[str, float], str]] = None,
         detail_maps: Optional[Dict[str, str]] = None,
         facial_hair_manifest: Optional[Dict[str, Any]] = None,
+        subdivision_levels: int = 0,
     ) -> Dict[str, Any]:
         """
         Executes the full Stage 5 production export workflow.
@@ -150,6 +151,44 @@ class Stage5Exporter:
             for face in active_faces + 1:
                 fp.write(f"f {face[0]} {face[1]} {face[2]}\n")
 
+        # 5.5 High-Resolution Loop Subdivision (Film-Quality Mesh)
+        subdiv_manifest = None
+        if subdivision_levels > 0:
+            from src.utils.subdivision import loop_subdivide, export_obj_with_uvs, compute_vertex_normals
+            template_path = Path(__file__).resolve().parent.parent.parent / 'data' / 'flame_model' / 'head_template.obj'
+            if template_path.exists():
+                vt_list, ft_list = [], []
+                with open(template_path) as f:
+                    for line in f:
+                        if line.startswith('vt '):
+                            vt_list.append([float(x) for x in line.split()[1:3]])
+                        elif line.startswith('f '):
+                            parts = line.strip().split()[1:4]
+                            ft_list.append([int(p.split('/')[1]) - 1 for p in parts])
+                subdiv_vt = np.array(vt_list, dtype=np.float32)
+                subdiv_ft = np.array(ft_list, dtype=np.int32)
+                
+                if len(subdiv_ft) == len(active_faces):
+                    v_sub, f_sub, vt_sub, fvt_sub = loop_subdivide(
+                        active_vertices, active_faces, subdiv_vt, subdiv_ft, levels=subdivision_levels
+                    )
+                else:
+                    v_sub, f_sub, vt_sub, fvt_sub = loop_subdivide(
+                        active_vertices, active_faces, levels=subdivision_levels
+                    )
+                n_sub = compute_vertex_normals(v_sub, f_sub)
+                subdiv_k = len(v_sub) // 1000
+                subdiv_obj_path = out_path / f"head_mesh_{subdiv_k}k_neutral.obj"
+                export_obj_with_uvs(subdiv_obj_path, v_sub, f_sub, vt_sub, fvt_sub, n_sub)
+                
+                subdiv_manifest = {
+                    "levels": subdivision_levels,
+                    "num_vertices": int(len(v_sub)),
+                    "num_triangles": int(len(f_sub)),
+                    "obj_path": str(subdiv_obj_path.resolve())
+                }
+                print(f"[Stage 5] Exported film-quality {len(v_sub):,} vertex subdivided mesh to: {subdiv_obj_path.name}")
+
         # 6. Headless Blender Production FBX Packaging (Mesh + Armature + ARKit-52 + Hair Cards + LODs + Materials)
         fbx_output_path = out_path / "head_mesh_ue5_livelink.fbx"
         fbx_manifest = {}
@@ -169,24 +208,24 @@ class Stage5Exporter:
                 hair_cards_obj = cards_info.get("cards_obj")
                 hair_skinning_json = cards_info.get("skinning_json")
 
-            normal_map_file = None
             disp_map_file = None
-            if detail_maps and isinstance(detail_maps, dict):
-                normal_map_file = detail_maps.get("normal_png") or detail_maps.get("normal_map") or detail_maps.get("stubble_normal")
-                disp_map_file = detail_maps.get("displacement_png") or detail_maps.get("displacement_map") or detail_maps.get("stubble_displacement")
+            norm_map_file = None
+            if detail_maps:
+                disp_map_file = detail_maps.get("displacement_16bit")
+                norm_map_file = detail_maps.get("normal_map")
 
             render_preview_path = out_path / "preview_render.png"
 
             packager = FBXPackager()
             fbx_manifest = packager.package_fbx(
-                mesh_obj=base_obj_path,
-                blendshapes_json=bs_json_path,
-                output_fbx=fbx_output_path,
-                armature_json=armature_path,
-                lod_manifest=str(lod_manifest_file) if lod_manifest else None,
+                mesh_obj_path=base_obj_path,
+                armature_json_path=armature_file if self.enable_armature else None,
+                blendshapes_json_path=bs_json_path,
+                output_fbx_path=fbx_output_path,
+                lod_manifest_path=lod_manifest_file if self.enable_lods else None,
                 hair_cards_obj=hair_cards_obj,
                 hair_skinning_json=hair_skinning_json,
-                normal_map=normal_map_file,
+                normal_map=norm_map_file,
                 displacement_map=disp_map_file,
                 render_preview=render_preview_path,
             )
@@ -200,6 +239,7 @@ class Stage5Exporter:
             "fbx_file": fbx_manifest.get("fbx_file"),
             "fbx_packaging": fbx_manifest,
             "lods": lod_manifest,
+            "subdivision": subdiv_manifest,
             "stylization": stylization_info,
             "detail_maps": detail_maps,
             "facial_hair": facial_hair_manifest,

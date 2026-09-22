@@ -69,53 +69,50 @@ for i in range(n_gpus):
     compile(c2_code, "<cell_2>", "exec")
     cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c2_code})
 
-    # Cell 3: Dataset Discovery & Preprocessing Assurance
-    c3_code = """# Cell 3: Dataset Discovery & Demographic Preprocessing Assurance
+    # Cell 3: Dataset Discovery & Real Photogrammetry Scan Ingestion
+    c3_code = """# Cell 3: Real Photogrammetry Scan Dataset Discovery & Ingestion
 import json
 import shutil
 import subprocess
 from pathlib import Path
 
-print("--- Locating / Preparing UV Displacement Dataset ---")
+print("--- Locating / Preparing Real 3D Scan Displacement Dataset ---")
 DATA_DIR = None
 
-# Check /kaggle/input for existing preprocessed dataset
-for cand in list(Path("/kaggle/input").glob("**/uv_displacement_dataset_1024")) + list(Path("/kaggle/input").glob("**/normalization_stats.json")):
+# 1. Check for real photogrammetry scan displacement dataset in /kaggle/input
+for cand in list(Path("/kaggle/input").glob("**/real_scan_displacement_dataset_1024")) + list(Path("/kaggle/input").glob("**/normalization_stats.json")):
     p = cand if cand.is_dir() else cand.parent
     if list(p.glob("*_disp.png")):
         DATA_DIR = p
-        print(f"Found mounted preprocessed dataset at: {DATA_DIR}")
+        print(f"Found mounted real scan displacement dataset at: {DATA_DIR}")
         break
 
-# If not mounted in /kaggle/input, generate 20-subject demographic corpus inside session
+# 2. Check local repository data
+if DATA_DIR is None and Path("data/real_scan_displacement_dataset_1024").exists():
+    if list(Path("data/real_scan_displacement_dataset_1024").glob("*_disp.png")):
+        DATA_DIR = Path("data/real_scan_displacement_dataset_1024")
+        print(f"Found local real scan displacement dataset at: {DATA_DIR}")
+
+# 3. If not mounted, automatically fetch Meta Multiface neutral scans and ray-cast
 if DATA_DIR is None:
-    print("Preprocessed dataset not found in /kaggle/input. Running high-throughput demographic synthesis engine...")
-    flame_pkl_candidates = list(Path("/kaggle/input").glob("**/generic_model.pkl")) + list(Path("data/flame_model").glob("generic_model.pkl"))
-    if not flame_pkl_candidates:
-        raise FileNotFoundError("generic_model.pkl not found! Please attach flame-model dataset.")
-    flame_pkl = flame_pkl_candidates[0]
-    
-    template_candidates = list(Path("/kaggle/input").glob("**/head_template.obj")) + list(Path("data/flame_model").glob("head_template.obj"))
-    template_p = template_candidates[0] if template_candidates else None
-    
-    DATA_DIR = Path("/tmp/uv_displacement_dataset_1024")
+    print("Preprocessed real scan dataset not found. Downloading Meta Multiface real 3D scans...")
+    from scripts.download_community_data import download_multiface_scans
+    download_multiface_scans(identities=["6795937", "5372021", "8870559", "7889059"])
+
+    DATA_DIR = Path("/tmp/real_scan_displacement_dataset_1024")
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    
-    synth_cmd = [
-        "python", "scripts/build_uv_displacement_dataset.py",
-        "--synthesize_demographic_corpus", "20",
-        "--flame_model", str(flame_pkl),
-        "--output_dir", str(DATA_DIR),
-        "--resolution", "1024"
+
+    scan_cmd = [
+        "python", "scripts/build_real_scan_displacement_dataset.py",
+        "--scans_dir", "data/external/3d_scans/multiface/extracted",
+        "--out_dir", str(DATA_DIR),
+        "--resolution", "512"
     ]
-    if template_p:
-        synth_cmd.extend(["--uv_template", str(template_p)])
-        
-    print("Executing synthesis command:", " ".join(synth_cmd))
-    subprocess.run(synth_cmd, check=True)
+    print("Executing real scan ray-casting pipeline:", " ".join(scan_cmd))
+    subprocess.run(scan_cmd, check=True)
 
 disp_files = list(DATA_DIR.glob("*_disp.png"))
-print(f"Verified dataset at {DATA_DIR} containing {len(disp_files)} displacement maps.")
+print(f"Verified dataset at {DATA_DIR} containing {len(disp_files)} real photogrammetry displacement maps.")
 assert len(disp_files) >= 2, f"Expected >= 2 displacement samples, found {len(disp_files)}"
 
 stats_file = DATA_DIR / "normalization_stats.json"

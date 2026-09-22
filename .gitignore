@@ -37,7 +37,12 @@ data/flame_model/*
 !data/flame_model/.gitkeep
 !data/test_images/.gitkeep
 data/external/3d_scans/*.obj
+data/external/3d_scans/multiface/
 !data/external/3d_scans/reference_photogrammetry/*.obj
+data/real_scan_displacement_dataset_1024/
+data/real_scan_test_single/
+data/real_scan_test_multi/
+scratch/
 
 # Outputs: Ignore bulky intermediate runs, include production batch & analysis assets
 outputs/*

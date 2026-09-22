@@ -65,6 +65,14 @@ KERNEL_CONFIGS = {
         "datasets": ["nightshowdown/flame-model"],
         "kernel_sources": ["nightshowdown/phase-3-detail-gan-train"],
     },
+    "dataset_reextract": {
+        "slug": "dataset-reextract-subdiv2-smooth",
+        "title": "Dataset Re-Extract: Subdiv2 + C2 Smoothing",
+        "notebook": "dataset_reextract_subdiv2.ipynb",
+        "enable_gpu": True,
+        "datasets": ["nightshowdown/flame-model"],
+        "kernel_sources": [],
+    },
 }
 
 

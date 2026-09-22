@@ -17,7 +17,7 @@ import argparse
 import urllib.request
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -239,9 +239,75 @@ def download_sample_scans() -> List[Path]:
                 for face in faces:
                     f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
             downloaded.append(ref_scan_file)
-            print(f"  ✅ Synthesized Calibrated Reference 3D Scan: {safe_relpath(ref_scan_file)} (5,023 vertices)")
         except Exception as e:
             print(f"  ⚠️ Could not synthesize reference scan: {e}")
+
+    return downloaded
+
+
+def download_multiface_scans(
+    identities: Optional[List[str]] = None,
+    expressions: Optional[List[str]] = None
+) -> List[Path]:
+    """
+    Downloads real high-resolution 3D facial scan meshes from Meta's Multiface public S3 dataset.
+    Downloads only the tracked 3D OBJ meshes (~35 MB per identity/expression) without
+    consuming bandwidth on multi-gigabyte video or audio.
+    """
+    import tarfile
+
+    if identities is None:
+        identities = ["6795937"]
+    if expressions is None:
+        expressions = ["E001_Neutral_Eyes_Open"]
+
+    s3_base = "https://fb-baas-f32eacb9-8abb-11eb-b2b8-4857dd089e15.s3.amazonaws.com/MugsyDataRelease/v0.0/identities"
+    dest_dir = SCANS_DIR / "multiface"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    extracted_objs = []
+
+    print("\n🌐 DOWNLOADING META MULTIFACE REAL 3D SCAN MESHES:")
+    for entity in identities:
+        for expr in expressions:
+            tar_name = f"tracked_mesh--{expr}.tar"
+            tar_url = f"{s3_base}/{entity}/{tar_name}"
+            tar_dest = dest_dir / f"{entity}__{tar_name}"
+
+            is_valid_tar = False
+            if tar_dest.exists() and tar_dest.stat().st_size > 10000:
+                try:
+                    with tarfile.open(tar_dest, 'r') as test_t:
+                        test_t.getmembers()
+                    is_valid_tar = True
+                except Exception:
+                    is_valid_tar = False
+
+            if not is_valid_tar:
+                print(f"  📥 Fetching {tar_name} for identity {entity} ({tar_url})...")
+                try:
+                    urllib.request.urlretrieve(tar_url, tar_dest)
+                    print(f"  ✅ Downloaded: {safe_relpath(tar_dest)} ({tar_dest.stat().st_size / 1e6:.1f} MB)")
+                except Exception as e:
+                    print(f"  ❌ Failed to download {tar_url}: {e}")
+                    continue
+            else:
+                print(f"  🟢 Found cached valid archive: {safe_relpath(tar_dest)} ({tar_dest.stat().st_size / 1e6:.1f} MB)")
+
+            # Extract OBJ files
+            extract_dir = dest_dir / "extracted" / entity / expr
+            extract_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                with tarfile.open(tar_dest) as tar:
+                    members = [m for m in tar.getmembers() if m.name.endswith('.obj')]
+                    for m in members:
+                        tar.extract(m, path=extract_dir)
+                        extracted_objs.append(extract_dir / m.name)
+                print(f"  📦 Extracted {len(members)} real 3D scan OBJ frames to: {safe_relpath(extract_dir)}")
+            except Exception as e:
+                print(f"  ⚠️ Error extracting {tar_dest}: {e}")
+
+    return extracted_objs
+
 
     return downloaded
 
@@ -289,6 +355,7 @@ def main():
     parser.add_argument("--check", action="store_true", help="Audit local and external dataset status")
     parser.add_argument("--generate_templates", action="store_true", help="Generate academic license request emails")
     parser.add_argument("--download_sample_scans", action="store_true", help="Ingest reference 3D scan meshes")
+    parser.add_argument("--download_multiface", action="store_true", help="Download Meta Multiface real 3D head scan meshes")
     parser.add_argument("--scale_synthetic", action="store_true", help="Expand demographic dataset")
     parser.add_argument("--n_subjects", type=int, default=50, help="Number of subjects for synthetic scaling")
     parser.add_argument("--resolution", type=int, default=1024, help="Displacement map resolution")
@@ -297,7 +364,7 @@ def main():
     args = parser.parse_args()
 
     # If no flags passed, run --all
-    if not any([args.check, args.generate_templates, args.download_sample_scans, args.scale_synthetic, args.all]):
+    if not any([args.check, args.generate_templates, args.download_sample_scans, args.download_multiface, args.scale_synthetic, args.all]):
         args.all = True
 
     if args.check or args.all:
@@ -308,6 +375,9 @@ def main():
 
     if args.download_sample_scans or args.all:
         download_sample_scans()
+
+    if args.download_multiface:
+        download_multiface_scans()
 
     if args.scale_synthetic:
         scale_synthetic_dataset(n_subjects=args.n_subjects, resolution=args.resolution)
