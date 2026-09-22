@@ -349,12 +349,67 @@ def process_real_scan(
     return res
 
 
+def resolve_flame_paths(
+    flame_pkl_override: Optional[str] = None,
+    template_obj_override: Optional[str] = None
+) -> Tuple[Path, Path]:
+    """
+    Resolves paths to generic_model.pkl and head_template.obj, automatically
+    checking project root, Kaggle input mounts (/kaggle/input/**), and working directory.
+    """
+    # 1. Resolve generic_model.pkl
+    if flame_pkl_override and Path(flame_pkl_override).exists():
+        flame_pkl = Path(flame_pkl_override)
+    else:
+        candidates = [
+            PROJECT_ROOT / "data" / "flame_model" / "generic_model.pkl",
+            Path("data/flame_model/generic_model.pkl"),
+        ]
+        if Path("/kaggle/input").exists():
+            candidates.extend(list(Path("/kaggle/input").glob("**/generic_model.pkl")))
+        candidates.extend(list(Path(".").glob("**/generic_model.pkl")))
+
+        found = [p for p in candidates if p.exists() and p.is_file()]
+        if not found:
+            raise FileNotFoundError(
+                f"FLAME generic_model.pkl not found! Checked:\n" +
+                "\n".join(f"  - {c}" for c in candidates[:6]) +
+                "\nPlease ensure data/flame_model/generic_model.pkl exists or attach nightshowdown/flame-model on Kaggle."
+            )
+        flame_pkl = found[0]
+
+    # 2. Resolve head_template.obj
+    if template_obj_override and Path(template_obj_override).exists():
+        flame_uv_obj = Path(template_obj_override)
+    else:
+        candidates = [
+            PROJECT_ROOT / "data" / "flame_model" / "head_template.obj",
+            Path("data/flame_model/head_template.obj"),
+        ]
+        if Path("/kaggle/input").exists():
+            candidates.extend(list(Path("/kaggle/input").glob("**/head_template.obj")))
+        candidates.extend(list(Path(".").glob("**/head_template.obj")))
+
+        found = [p for p in candidates if p.exists() and p.is_file()]
+        if not found:
+            raise FileNotFoundError(
+                f"FLAME head_template.obj not found! Checked:\n" +
+                "\n".join(f"  - {c}" for c in candidates[:6]) +
+                "\nPlease ensure data/flame_model/head_template.obj exists or attach nightshowdown/flame-model on Kaggle."
+            )
+        flame_uv_obj = found[0]
+
+    return flame_pkl, flame_uv_obj
+
+
 def build_real_scan_dataset(
     scans_dir: Path,
     out_dir: Path,
     resolution: int = 1024,
     max_scans: Optional[int] = None,
-    device: str = "cpu"
+    device: str = "cpu",
+    flame_model_path: Optional[str] = None,
+    uv_template_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Discovers all real 3D scan meshes, processes each into 1024x1024 maps,
@@ -399,8 +454,9 @@ def build_real_scan_dataset(
         raise FileNotFoundError(f"No scan meshes found in {scans_dir}")
 
     # Load FLAME model & UV layout
-    flame_pkl = PROJECT_ROOT / "data" / "flame_model" / "generic_model.pkl"
-    flame_uv_obj = PROJECT_ROOT / "data" / "flame_model" / "head_template.obj"
+    flame_pkl, flame_uv_obj = resolve_flame_paths(flame_model_path, uv_template_path)
+    print(f"  Using FLAME model: {flame_pkl}")
+    print(f"  Using UV template: {flame_uv_obj}")
     flame = FLAMEModel(str(flame_pkl), scale_to_mm=False)
     uv_coords, uv_faces = load_flame_uv_layout(str(flame_uv_obj))
     flame_adj = build_flame_adjacency(flame.faces, len(flame.v_template))
@@ -534,6 +590,8 @@ def main():
     parser.add_argument("--resolution", type=int, default=1024, help="Displacement map resolution")
     parser.add_argument("--max_scans", type=int, default=None, help="Maximum scans to process")
     parser.add_argument("--device", type=str, default="cpu", help="PyTorch compute device")
+    parser.add_argument("--flame_model", type=str, default=None, help="Optional path to FLAME generic_model.pkl")
+    parser.add_argument("--uv_template", type=str, default=None, help="Optional path to FLAME head_template.obj")
     parser.add_argument("--verify_render", action="store_true", help="Render 320k subdivided head with extracted map")
 
     args = parser.parse_args()
@@ -546,7 +604,9 @@ def main():
         out_dir=out_dir,
         resolution=args.resolution,
         max_scans=args.max_scans,
-        device=args.device
+        device=args.device,
+        flame_model_path=args.flame_model,
+        uv_template_path=args.uv_template
     )
 
     if args.verify_render and result["sample_result"] is not None:
@@ -555,8 +615,7 @@ def main():
         stats = result["stats"]
 
         # Load FLAME base mesh
-        flame_pkl = PROJECT_ROOT / "data" / "flame_model" / "generic_model.pkl"
-        flame_uv_obj = PROJECT_ROOT / "data" / "flame_model" / "head_template.obj"
+        flame_pkl, flame_uv_obj = resolve_flame_paths(args.flame_model, args.uv_template)
         flame = FLAMEModel(str(flame_pkl), scale_to_mm=False)
         uv_coords, uv_faces = load_flame_uv_layout(str(flame_uv_obj))
 

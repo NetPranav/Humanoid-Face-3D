@@ -5,6 +5,7 @@ and kernel-metadata.json for re-extracting the real scan displacement dataset
 with subdivision level 2 (~80k vertices) and C² Gaussian smoothing (σ=8.0).
 """
 import json
+import shutil
 from pathlib import Path
 
 
@@ -17,7 +18,7 @@ def create_dataset_reextract_notebook():
     # Cell 0: Header Markdown
     c0_md = """# Dataset Re-Extraction: Subdivision Level 2 + C² Smoothing
 
-**Objective:** Re-extract all 243 real photogrammetry displacement maps from Meta Multiface scans using:
+**Objective:** Re-extract all real photogrammetry displacement maps from Meta Multiface scans using:
 1. **Subdivision level 2** (~80k vertices) for facet-free dense ray sampling
 2. **C² Gaussian smoothing (σ=8.0)** with normalized convolution on conditioning maps
 3. **1024×1024 resolution** displacement, position, normal, and mask maps
@@ -35,7 +36,8 @@ import subprocess
 from pathlib import Path
 
 print("--- Setting Up Humanoid-Face-3D Workspace ---")
-target_dir = Path("/kaggle/working/Humanoid-Face-3D")
+# Clone to /tmp to avoid eating into Kaggle's 19.5GB /kaggle/working limit and 500-file cap
+target_dir = Path("/tmp/Humanoid-Face-3D")
 if not (target_dir / "src/pipeline.py").exists():
     subprocess.run(["git", "clone", "--recurse-submodules", "https://github.com/NetPranav/Humanoid-Face-3D.git", str(target_dir)], check=True)
 os.chdir(str(target_dir))
@@ -71,8 +73,40 @@ else:
     compile(c2_code, "<cell_2>", "exec")
     cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c2_code})
 
-    # Cell 3: Download & Discover Real 3D Scans
-    c3_code = """# Cell 3: Download & Discover Real Photogrammetry 3D Scans
+    # Cell 3: Locate & Mount FLAME Model & Head Template
+    c3_flame_code = """# Cell 3: Locate & Mount FLAME Model & Head Template
+import shutil
+from pathlib import Path
+
+print("--- Locating & Mounting FLAME Assets ---")
+flame_dest = Path("data/flame_model")
+flame_dest.mkdir(parents=True, exist_ok=True)
+
+# 1. generic_model.pkl
+flame_candidates = list(Path("/kaggle/input").glob("**/generic_model.pkl")) + list(Path(".").glob("**/generic_model.pkl"))
+if not flame_candidates:
+    raise FileNotFoundError("generic_model.pkl not found! Please attach dataset nightshowdown/flame-model.")
+flame_pkl = flame_candidates[0]
+dest_pkl = flame_dest / "generic_model.pkl"
+if not dest_pkl.exists() or dest_pkl.stat().st_size < 1000:
+    shutil.copy2(flame_pkl, dest_pkl)
+print(f"  Mounted FLAME generic_model.pkl from {flame_pkl} -> {dest_pkl} ({dest_pkl.stat().st_size / 1e6:.1f} MB)")
+
+# 2. head_template.obj
+head_candidates = list(Path("/kaggle/input").glob("**/head_template.obj")) + list(Path(".").glob("**/head_template.obj"))
+if not head_candidates:
+    raise FileNotFoundError("head_template.obj not found! Please attach dataset nightshowdown/flame-model.")
+head_obj = head_candidates[0]
+dest_obj = flame_dest / "head_template.obj"
+if not dest_obj.exists() or dest_obj.stat().st_size < 1000:
+    shutil.copy2(head_obj, dest_obj)
+print(f"  Mounted FLAME head_template.obj from {head_obj} -> {dest_obj} ({dest_obj.stat().st_size / 1e3:.1f} KB)")
+"""
+    compile(c3_flame_code, "<cell_3_flame>", "exec")
+    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c3_flame_code})
+
+    # Cell 4: Download & Discover Real 3D Scans
+    c4_scan_code = """# Cell 4: Download & Discover Real Photogrammetry 3D Scans
 import json
 import subprocess
 from pathlib import Path
@@ -109,17 +143,18 @@ if len(scan_files) == 0:
 print(f"\\n📦 Found {len(scan_files)} real 3D scan meshes ready for processing.")
 assert len(scan_files) >= 1, "No scan meshes found! Check data/external/3d_scans/ or /kaggle/input mounts."
 """
-    compile(c3_code, "<cell_3>", "exec")
-    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c3_code})
+    compile(c4_scan_code, "<cell_4_scan>", "exec")
+    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c4_scan_code})
 
-    # Cell 4: Run Re-Extraction with Subdivision Level 2
-    c4_code = """# Cell 4: Run Dataset Re-Extraction (Subdivision Level 2, σ=8.0, 1024×1024)
+    # Cell 5: Run Re-Extraction with Subdivision Level 2
+    c5_extract_code = """# Cell 5: Run Dataset Re-Extraction (Subdivision Level 2, σ=8.0, 1024×1024)
 import subprocess
 import os
+import sys
 import time
 from pathlib import Path
 
-# Use /tmp for scratch to avoid Kaggle's 19.5GB /kaggle/working quota
+# Use /tmp for scratch to avoid Kaggle's 19.5GB /kaggle/working quota and inode limit
 OUT_DIR = Path("/tmp/real_scan_displacement_dataset_1024")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -139,7 +174,7 @@ env = os.environ.copy()
 env["PYTHONPATH"] = f"{os.getcwd()}:{env.get('PYTHONPATH', '')}"
 
 extract_cmd = [
-    "python", "scripts/build_real_scan_displacement_dataset.py",
+    sys.executable, "scripts/build_real_scan_displacement_dataset.py",
     "--scans_dir", str(scans_dir),
     "--out_dir", str(OUT_DIR),
     "--resolution", "1024",
@@ -154,15 +189,15 @@ elapsed = time.time() - start
 print(f"\\n⏱️  Total extraction time: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
 
 if result.returncode != 0:
-    print(f"⚠️  Extraction returned code {result.returncode}. Check output above for errors.")
+    raise RuntimeError(f"❌ Extraction failed with exit code {result.returncode}! See log above.")
 else:
     print("✅ Extraction completed successfully!")
 """
-    compile(c4_code, "<cell_4>", "exec")
-    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c4_code})
+    compile(c5_extract_code, "<cell_5_extract>", "exec")
+    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c5_extract_code})
 
-    # Cell 5: Validate Extracted Dataset
-    c5_code = """# Cell 5: Validate Extracted Dataset Quality
+    # Cell 6: Validate Extracted Dataset Quality
+    c6_val_code = """# Cell 6: Validate Extracted Dataset Quality
 import json
 import numpy as np
 import cv2
@@ -232,11 +267,11 @@ if np.sum(interior > 0) > 0:
 print("=" * 60)
 print("✅ Dataset validation complete!")
 """
-    compile(c5_code, "<cell_5>", "exec")
-    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c5_code})
+    compile(c6_val_code, "<cell_6_val>", "exec")
+    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c6_val_code})
 
-    # Cell 6: Preview Grid
-    c6_code = """# Cell 6: Generate Visual Preview Grid
+    # Cell 7: Preview Grid
+    c7_vis_code = """# Cell 7: Generate Visual Preview Grid
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
@@ -271,73 +306,53 @@ for i in range(n_preview):
 
 plt.suptitle(f"Real Scan Dataset Preview (Subdiv Level 2, σ=8.0) — {len(disp_files)} samples", fontsize=12)
 plt.tight_layout()
-plt.savefig("/kaggle/working/dataset_preview_grid.png", dpi=150, bbox_inches="tight")
+preview_save_path = Path("/kaggle/working/dataset_preview_grid.png")
+preview_save_path.parent.mkdir(parents=True, exist_ok=True)
+plt.savefig(str(preview_save_path), dpi=150, bbox_inches="tight")
 plt.show()
-print(f"Saved preview grid to /kaggle/working/dataset_preview_grid.png")
+print(f"Saved preview grid to {preview_save_path}")
 """
-    compile(c6_code, "<cell_6>", "exec")
-    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c6_code})
+    compile(c7_vis_code, "<cell_7_vis>", "exec")
+    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c7_vis_code})
 
-    # Cell 7: Copy to /kaggle/working for output download
-    c7_code = """# Cell 7: Stage Dataset for Kaggle Output Download
+    # Cell 8: Package Dataset into Zip Archive for Kaggle Output Download
+    c8_pkg_code = """# Cell 8: Package Dataset for Kaggle Output Download
 import shutil
-import os
+import subprocess
 from pathlib import Path
 
 OUT_DIR = Path("/tmp/real_scan_displacement_dataset_1024")
-FINAL_DIR = Path("/kaggle/working/real_scan_displacement_dataset_1024")
+KAGGLE_WORKING = Path("/kaggle/working")
+KAGGLE_WORKING.mkdir(parents=True, exist_ok=True)
 
-# Check disk usage first
-import subprocess
-du_result = subprocess.run(["du", "-sh", str(OUT_DIR)], capture_output=True, text=True)
-print(f"Dataset size: {du_result.stdout.strip()}")
+# 1. Package complete dataset into a zip archive (strictly respects Kaggle's 500-file cap & enables fast 1-file download)
+zip_path = KAGGLE_WORKING / "real_scan_displacement_dataset_1024.zip"
+print(f"📦 Packaging complete dataset into {zip_path}...")
+subprocess.run(["zip", "-q", "-r", str(zip_path), "."], cwd=str(OUT_DIR), check=True)
+print(f"✅ Created archive: {zip_path.name} ({zip_path.stat().st_size / 1e6:.1f} MB)")
 
-# Count files
-all_files = list(OUT_DIR.glob("*"))
-print(f"Total files: {len(all_files)}")
+# 2. Copy lightweight metadata files directly to /kaggle/working/ for instant inspection
+for fname in ["normalization_stats.json", "manifest.json"]:
+    src = OUT_DIR / fname
+    if src.exists():
+        shutil.copy2(src, KAGGLE_WORKING / fname)
+        print(f"  Copied {fname} to /kaggle/working/")
 
-# Copy to /kaggle/working for output artifact
-if FINAL_DIR.exists():
-    shutil.rmtree(FINAL_DIR)
-
-# Check if we'd exceed the 19.5GB limit
-working_usage = subprocess.run(["du", "-s", "/kaggle/working"], capture_output=True, text=True)
-used_kb = int(working_usage.stdout.split()[0]) if working_usage.returncode == 0 else 0
-used_gb = used_kb / 1e6
-dataset_kb_result = subprocess.run(["du", "-s", str(OUT_DIR)], capture_output=True, text=True)
-dataset_kb = int(dataset_kb_result.stdout.split()[0]) if dataset_kb_result.returncode == 0 else 0
-dataset_gb = dataset_kb / 1e6
-
-print(f"Current /kaggle/working usage: {used_gb:.2f} GB")
-print(f"Dataset size: {dataset_gb:.2f} GB")
-
-if used_gb + dataset_gb < 18.0:
-    shutil.copytree(str(OUT_DIR), str(FINAL_DIR))
-    print(f"✅ Dataset staged at {FINAL_DIR} for Kaggle output download.")
-else:
-    # Copy only essential files (stats + manifest + a subset)
-    FINAL_DIR.mkdir(parents=True, exist_ok=True)
-    for f in ["normalization_stats.json", "manifest.json"]:
-        src = OUT_DIR / f
-        if src.exists():
-            shutil.copy2(src, FINAL_DIR / f)
-
-    # Copy all displacement, position, normal, mask, and metadata files
-    for pattern in ["*_disp.png", "*_pos.png", "*_norm.png", "*_mask.png", "*_maps.npz"]:
-        for src in sorted(OUT_DIR.glob(pattern)):
-            shutil.copy2(src, FINAL_DIR / src.name)
-
-    print(f"✅ Dataset staged at {FINAL_DIR} (essential files only to respect quota).")
-
-# Also copy verification renders
 for render in OUT_DIR.glob("verify_320k_*.png"):
-    shutil.copy2(render, Path("/kaggle/working") / render.name)
+    shutil.copy2(render, KAGGLE_WORKING / render.name)
+    print(f"  Copied {render.name} to /kaggle/working/")
 
-print("\\n🎉 Dataset re-extraction complete! Download the output from Kaggle.")
-print("   Then upload as a Kaggle Dataset for training notebooks to mount.")
+# 3. Audit final /kaggle/working inode & disk count
+staged_files = list(KAGGLE_WORKING.glob("*"))
+print(f"\\n📋 Final /kaggle/working contains {len(staged_files)} files (cap is 500 files):")
+for f in sorted(staged_files):
+    if f.is_file():
+        print(f"  - {f.name} ({f.stat().st_size / 1e6:.2f} MB)")
+
+print("\\n🎉 Dataset re-extraction complete! Outputs ready for download.")
 """
-    compile(c7_code, "<cell_7>", "exec")
-    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c7_code})
+    compile(c8_pkg_code, "<cell_8_pkg>", "exec")
+    cells.append({"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": c8_pkg_code})
 
     # Build notebook
     notebook = {
@@ -361,6 +376,11 @@ print("   Then upload as a Kaggle Dataset for training notebooks to mount.")
     with open(nb_path, "w") as f:
         json.dump(notebook, f, indent=1)
     print(f"✅ Notebook written to: {nb_path}")
+
+    # Also sync to notebooks/kaggle/dataset_reextract_subdiv2.ipynb
+    root_nb = Path("notebooks/kaggle/dataset_reextract_subdiv2.ipynb")
+    shutil.copy2(nb_path, root_nb)
+    print(f"✅ Synchronized notebook to: {root_nb}")
 
     # Kernel metadata for Kaggle push
     metadata = {

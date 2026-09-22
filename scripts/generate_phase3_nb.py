@@ -79,13 +79,25 @@ from pathlib import Path
 print("--- Locating / Preparing Real 3D Scan Displacement Dataset ---")
 DATA_DIR = None
 
-# 1. Check for real photogrammetry scan displacement dataset in /kaggle/input
-for cand in list(Path("/kaggle/input").glob("**/real_scan_displacement_dataset_1024")) + list(Path("/kaggle/input").glob("**/normalization_stats.json")):
-    p = cand if cand.is_dir() else cand.parent
-    if list(p.glob("*_disp.png")):
-        DATA_DIR = p
-        print(f"Found mounted real scan displacement dataset at: {DATA_DIR}")
+# 0. Check for zipped or tarred dataset in /kaggle/input
+for archive in list(Path("/kaggle/input").glob("**/*.zip")) + list(Path("/kaggle/input").glob("**/*.tar.gz")):
+    if "displacement" in archive.name.lower() or "real_scan" in archive.name.lower():
+        unpacked_dir = Path("/tmp/real_scan_displacement_dataset_1024")
+        if not (unpacked_dir / "normalization_stats.json").exists():
+            print(f"Extracting dataset archive {archive} to {unpacked_dir}...")
+            shutil.unpack_archive(str(archive), str(unpacked_dir))
+        DATA_DIR = unpacked_dir
+        print(f"Found and extracted real scan displacement dataset at: {DATA_DIR}")
         break
+
+# 1. Check for real photogrammetry scan displacement dataset in /kaggle/input
+if DATA_DIR is None:
+    for cand in list(Path("/kaggle/input").glob("**/real_scan_displacement_dataset_1024")) + list(Path("/kaggle/input").glob("**/normalization_stats.json")):
+        p = cand if cand.is_dir() else cand.parent
+        if list(p.glob("*_disp.png")):
+            DATA_DIR = p
+            print(f"Found mounted real scan displacement dataset at: {DATA_DIR}")
+            break
 
 # 2. Check local repository data
 if DATA_DIR is None and Path("data/real_scan_displacement_dataset_1024").exists():

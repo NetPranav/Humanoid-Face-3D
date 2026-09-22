@@ -263,3 +263,11 @@ Kernel version 1 successfully pushed.  Please check progress at https://www.kagg
 `[2026-09-22 01:06:27]` ✅ Outputs downloaded to /Users/pranav/Project Folder/3d Model /outputs/phase-3-deep-detail-gan-train
 `[2026-09-22 08:31:22]` 📥 Pulling output for `nightshowdown/phase-3-deep-detail-gan-train` to /Users/pranav/Project Folder/3d Model /outputs/phase-3-deep-detail-gan-train...
 `[2026-09-22 08:37:10]` ✅ Outputs downloaded to /Users/pranav/Project Folder/3d Model /outputs/phase-3-deep-detail-gan-train
+`[2026-09-22 17:32:25]` 🚀 Packaging kernel `nightshowdown/dataset-reextract-subdiv2-smooth` (GPU: True, Internet: True)
+`[2026-09-22 17:32:28]` ✅ Successfully pushed `nightshowdown/dataset-reextract-subdiv2-smooth` to Kaggle cloud!
+Your kernel title does not resolve to the specified id. This may result in surprising behavior. We suggest making your title something that resolves to the specified id. See https://en.wikipedia.org/wiki/Clean_URL#Slug for more information on how slugs are determined.
+Kernel version 1 successfully pushed.  Please check progress at https://www.kaggle.com/code/nightshowdown/dataset-re-extract-subdiv2-c2-smoothing
+`[2026-09-22 17:32:36]` 📊 Status `nightshowdown/dataset-reextract-subdiv2-smooth`: 403 Client Error: Forbidden for url: https://www.kaggle.com/api/v1/kernels/status?username=nightshowdown&kernelslug=dataset-reextract-subdiv2-smooth
+`[2026-09-22 17:33:08]` 📊 Status `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing`: nightshowdown/dataset-re-extract-subdiv2-c2-smoothing has status "KernelWorkerStatus.RUNNING"
+`[2026-09-22 17:37:39]` 📊 Status `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing`: nightshowdown/dataset-re-extract-subdiv2-c2-smoothing has status "KernelWorkerStatus.ERROR"
+`[2026-09-22 17:37:52]` 📥 Pulling output for `nightshowdown/dataset-re-extract-subdiv2-c2-smoothing` to /Users/pranav/Project Folder/3d Model /outputs/dataset-re-extract-subdiv2-c2-smoothing...
