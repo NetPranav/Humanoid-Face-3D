@@ -1,468 +1,235 @@
 # 3D Face Geometry Pipeline — Master Architectural Roadmap
 
-> **Target:** A locally-orchestrated, Kaggle T4×2-trainable face reconstruction pipeline that accepts 3–5 multi-view portraits and synthesizes a **fully textured, PBR-ready 3D facial mesh** (neutral base mesh + micro-displacement details + PBR texture maps + ARKit-52 blendshapes + LODs + UE5 Live Link rig).
-> **Quality Bar:** Film-grade realism with pore-level detail in both geometry AND texture — realistic enough for VFX production.
-> **Source Documents:** Derived from `Research.md`, `DOCS/01–03`, `DOCS/00_code_review.md`, `DOCS/texture_engine.md`, and `DOCS/another_guide.md`.
+> **Target:** A production-grade, identity-preserving image-to-3D **fully textured, film-grade MetaHuman humanoid head asset** reconstruction pipeline that synthesizes film/VFX-grade 3D facial assets from 3–5 multi-view portraits, complete with physically based rendering material maps (delighted albedo, dual-lobe roughness, SSS thickness, cavity/AO, displacement, normal), ARKit-52 blendshapes, 4-tier LOD decimation, 5-joint skeleton, and automated Blender Cycles studio rendering.
+> **Quality Bar:** Epic Games MetaHuman / VFX look-dev cinematic realism with true 50-micron epidermal pores, photo-derived meso wrinkles, and Random Walk Subsurface Scattering.
+> **Active Architecture Specification:** [DOCS/02_Metahuman_Film_Grade_Synthesis.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/02_Metahuman_Film_Grade_Synthesis.md) & [DOCS/05_Blender_Cycles_Film_Rendering_Engine.md](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/05_Blender_Cycles_Film_Rendering_Engine.md).
+> **Failed Research Archive:** [DOCS/FAILED/RESEARCH_1/](file:///Users/pranav/Project%20Folder/3d%20Model%20/DOCS/FAILED/RESEARCH_1).
 
 ---
 
-## Architecture Overview & Mental Model
+## 1. System Architecture: The 4-Tier Hierarchical Decomposition
+
+Following the disproven hypothesis of monolithic GAN scan hallucination in Research 1, the pipeline operates on the industry-standard 4-tier frequency decomposition:
 
 ```
-[3–5 Face Photos]
+[3–5 Portrait Photos]
        │
        ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│ Stage 0: Preprocessing & Validation                                     │
+│ STAGE 0: Preprocessing & Validation                                     │
 │ • InsightFace detection & 5-point alignment (RGB, [-1, 1] normalized)  │
 │ • Pre-flight checks: identity consistency, yaw diversity, frontal view │
 └────────────────────────────────────────────────────────────────────────┘
        │
-       ├─── Aligned crops (112×112)
        ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│ Stage 1: Multi-View Identity Shape Regression (MICA)                    │
-│ • ArcFace feature extraction across views                              │
-│ • Pose-weighted embedding-space fusion: w_i = det_score · cos(yaw)²    │
-│ • Regress 300-D FLAME shape parameter (beta)                           │
+│ TIER 1: MACRO GEOMETRY (Craniofacial Proportions & Skull Shape)        │
+│ • MICA ArcFace feature extraction across views with frontality weighting│
+│ • Regress 300-D FLAME shape coefficients (beta)                        │
+│ • Canonical neutral normalization: psi=0, theta=0                      │
+│ • Base mesh: 5,023 vertices, 9,976 triangles                           │
 └────────────────────────────────────────────────────────────────────────┘
        │
-       ├─── Aligned frontal crop (224×224)
-       ▼
+       ├─────────────────────────────────────────────┐
+       ▼                                             ▼
+┌────────────────────────────────────────┐  ┌────────────────────────────┐
+│ TIER 2: MESO GEOMETRY                  │  │ TIER 3: MICRO DETAIL       │
+│ • Multi-view Photometric SfS           │  │ • 4K Anatomical Pores      │
+│ • Direct photo-derived wrinkle extract │  │ • Texturing.xyz / MetaHuman│
+│ • Crow's feet, brow furrows, laugh lines│  │ • T-zone follicles, lips, │
+│ • 1:1 real photo correspondence        │  │   cheek pores, neck bands  │
+└──────────────────┬─────────────────────┘  └─────────────┬──────────────┘
+                   │                                      │
+                   └──────────────────┬───────────────────┘
+                                      │
+                                      ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│ Stage 2: Expression & Pose Regression (SMIRK)                          │
-│ • Regress 100-D expression (psi) and 15-D joint pose (theta)           │
-│ • CRITICAL: Base mesh normalized to CANONICAL NEUTRAL (psi=0, theta=0) │
-│ • Expression parameters saved as metadata for Stage 5 blendshape deltas│
-└────────────────────────────────────────────────────────────────────────┘
-       │
-       ├─── Canonical Neutral Mesh (5023 vertices, FLAME topology)
-       ▼
+│ PBR TEXTURE & MATERIAL ENGINE (Stages 6, 7, 8)                         │
+│ • Stage 6: UV Texture Projection (backprojection, cosine blend, z-buff)│
+│ • Stage 7: AI Delighting & Inpainting (clean diffuse albedo)           │
+│ • Stage 8: PBR Material Stack Derivation                               │
+│   ├── Dual-Lobe Roughness (stratum corneum base + sebum coat sheen)    │
+│   ├── Micro-Cavity / AO (displacement negative Laplacian)              │
+│   └── SSS Thickness (opposing-normal ray-march)                        │
+└─────────────────────────────────────┬──────────────────────────────────┘
+                                      │
+                                      ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│ Stage 3: High-Frequency Detail Synthesis (Detail GAN)                  │
-│ • Rasterize neutral position (3) + normal (3) maps in UV space (512²)  │
-│ • U-Net Generator (InstanceNorm, AdaIN identity/expression conditioning│
-│   + MultiView cross-attention with residual connection)                │
-│ • PatchGAN Discriminator (SpectralNorm, FP32 lazy R1 regularization)   │
-│ • Output: 16-bit signed UV displacement map (wrinkles, pores, stubble) │
-└────────────────────────────────────────────────────────────────────────┘
-       │
-       ├─── Neutral Base Mesh + UV Displacement + Normal Maps + Photos
-       ▼
+│ TIER 4: FILM-GRADE BLENDER CYCLES STUDIO ENGINE                        │
+│ • Adaptive Micro-Polygon Subdivision (1 polygon per screen pixel)      │
+│ • Principled BSDF with Random Walk (Skin) Subsurface Scattering        │
+│ • Cinematic 3-point studio lighting rig (Key, Fill, sharp Rim/Sun)     │
+│ • 85mm prime portrait camera, shallow depth-of-field, AgX / Filmic     │
+│ • Output: 2048² turnaround render + production .blend studio scene     │
+└─────────────────────────────────────┬──────────────────────────────────┘
+                                      │
+                                      ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│ PBR TEXTURE ENGINE (Stages 6, 7, 8)                                   │
-│                                                                        │
-│ Stage 6: Multi-View UV Texture Projection          [PURE MATH]        │
-│ • Backproject photos → UV space via per-view camera matrices          │
-│ • Angle-weighted cosine blending + z-buffer visibility                │
-│                                                                        │
-│ Stage 7: AI Delighting + UV Inpainting             [PRE-TRAINED]      │
-│ • Encoder-decoder U-Net strips lighting → clean diffuse albedo        │
-│ • Procedural Gaussian dilation fills unseen regions                   │
-│                                                                        │
-│ Stage 8: PBR Material Stack                        [PURE MATH]        │
-│ • Roughness (anatomical zones), Cavity/AO (Laplacian), SSS thickness  │
-│                                                                        │
-│ Output: albedo.png, roughness.png, cavity_ao.png, sss.png (2048²)    │
-└────────────────────────────────────────────────────────────────────────┘
-       │
-       ├─── All PBR Texture Maps + Geometry
-       ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│ Stage 5: Production Retopology, Rigging & Export                       │
-│ • FLAME → ICT-FaceKit correspondence matrix (W @ v_flame)              │
-│ • 52 ARKit blendshapes via deformation transfer                        │
-│ • 4 LOD levels (LOD0: ~24.5k tris, LOD1: 5k, LOD2: 2k, LOD3: 500)      │
+│ STAGE 5: GAME ENGINE RIGGING & PRODUCTION EXPORT                       │
+│ • ICT-FaceKit retopology & 52 ARKit blendshapes (boundary pinned)      │
+│ • 4-tier LOD chain (LOD0: 24.5k tris down to LOD3: 500 tris)           │
 │ • 5-joint skeletal armature (head, neck, jaw, left eye, right eye)     │
-│ • PBR material slots: Albedo, Roughness, SSS, Cavity/AO, Disp, Normal│
-│ • Headless Blender packaging → Unreal Engine 5 Live Link FBX           │
+│ • Unreal Engine 5 Live Link FBX export                                 │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Kaggle T4×2 Resource Budget
+## 2. Master Phase Status Matrix
 
-* **Weekly GPU Quota:** ~30 GPU-hours per week.
-* **T4×2 Consumption:** 1 wall-clock hour = **2 GPU-quota hours**.
-* **Weekly Limit:** **~15 wall-clock hours** of 2×T4 per week (1 full 11.5h session + 1 short 3.5h run).
-* **CPU Session Utilization:** CPU-only sessions cost **0 GPU quota**. All geometry preprocessing (Phase 2.5), retopology ICP (Phase 5), evaluation runs (Phase 8), and Blender FBX packaging (Phase 7) must run on CPU sessions.
-* **Checkpoints:** Emergency checkpoint triggered at **11.5 hours** before Kaggle's 12-hour session kill.
-
----
-
-## Master Phase Status Matrix
-
-| Phase | Description | Estimated Wall-Clock | Accelerator | Status |
-|---|---|---|---|---|
-| **Phase 0** | Foundation, P0 Bug Fixes & Honest Failure Verification | 2–4 days | Local / CPU | ✅ Completed |
-| **Phase 1** | Multi-View Inference Baseline (Stages 0, 1, 2) | 1–2 weeks | Local + Kaggle T4×2 | ✅ Completed |
-| **Phase 2** | Identity Regressor Demographic Fine-Tuning | 1–2 weeks | Kaggle T4×2 (~15h quota) | 🔄 Code Ready / Queued |
-| **Phase 2.5**| Geometry Preprocessing & UV Displacement Dataset Engine | 1 week | Kaggle CPU (0 quota) | 🔄 Code Ready / Queued |
-| **Phase 3** | Adversarial High-Frequency Detail Synthesis (Detail GAN) | 3–4 weeks | Kaggle T4×2 (~30h quota) | 🔄 Code Ready / Queued |
-| **Phase 4** | Commercial Licensing & Own-Capture Asset Track | Weeks 1–10 (Parallel) | Business / Legal | ✅ Protocol & Ingest Built |
-| **Phase 5** | Production Retopology, ARKit-52 Rigging & LODs | 4–6 weeks | Local / Kaggle CPU | ✅ Completed |
-| **Phase 6** | Detail Hybridization & Static Facial Hair | 2–3 weeks | Kaggle T4×2 | ✅ Completed |
-| **Phase 7** | Headless Production Packaging & UE5 Live Link Export | 1–2 weeks | Kaggle CPU (0 quota) | ✅ Completed |
-| **Phase 8** | Comprehensive Benchmarking & Quality Assurance | Ongoing | Local / Kaggle CPU | ⏹ Queued |
-| **Phase 9** | PBR Texture Engine (Stages 6, 7, 8) | 1 week | Local / Kaggle CPU | ✅ Completed |
-| **Phase 10** | Delighting Fine-Tune (Optional — CelebA-HQ) | 4 hours | Kaggle T4×2 | ⏹ Queued (Optional) |
+| Phase | Description | Architecture / Method | Current Status |
+| :--- | :--- | :--- | :--- |
+| **Phase 0** | Foundation, P0 Bug Fixes & Honest Failure Verification | FLAME loader, silent fallback elimination, test suite | ✅ **Completed** (160 tests passing) |
+| **Phase 1** | Multi-View Inference Baseline | InsightFace + MICA + SMIRK canonical normalization | ✅ **Completed** |
+| **Phase 2** | MICA Identity Regressor Verification | ArcFace ViT Backbone + MPI Shape MLP ($\beta \in \mathbb{R}^{300}$) | ✅ **Completed** (Verified $\|\beta_a - \beta_b\| \in [4.6, 7.2]$) |
+| **Phase 2.5**| Geometry Preprocessing & Scan Extraction | Differentiable Ray-Casting & $C^2$ Smoothing ($\sigma=8.0$) | ⚠️ **Archived (Research 1)** (Laplacian $0.029$; scan lacks pores) |
+| **Phase 3 (Old)**| Adversarial Detail GAN on Multiface Scans | U-Net Generator + PatchGAN Discriminator (40k steps) | 🛑 **FAILED & ARCHIVED** (Wireframe defect & flat scans; see `FAILED/RESEARCH_1`) |
+| **Phase 4** | Commercial Licensing & Ingest Protocol | Talent release forms, multi-view capture protocol | ✅ **Completed** |
+| **Phase 5** | Production Retopology, ARKit-52 Rigging & LODs | Sparse $W$ matrix, 52 ARKit blendshapes, 4 LODs, skeleton | ✅ **Completed** |
+| **Phase 6** | Procedural Facial Hair & Beard Stubble | 3D hair cards, stubble displacement, collar pinning | ✅ **Completed** |
+| **Phase 7** | Headless Production Packaging & UE5 Export | Headless Blender FBX packager, manifest generator | ✅ **Completed** |
+| **Phase 8** | Benchmarking & Automated Quality Gates | Chamfer metrics, collar pinning assertion ($\Delta v \equiv 0$) | ✅ **Completed** |
+| **Phase 9** | PBR Texture Engine (Stages 6, 7, 8) | Pure math UV projection, AI delighting, roughness, cavity, SSS | ✅ **Completed** |
+| **Phase 10 (NEW)**| **Film-Grade MetaHuman Synthesis & Cycles Engine** | **Photo-derived meso wrinkles + 4K pores + Cycles SSS** | 🔄 **ACTIVE ROADMAP (IN PROGRESS)** |
 
 ---
 
-## Detailed Roadmap & Execution Checklists
+## 3. Active Sequential Execution Plan: Phase 10 (Step-by-Step)
+
+To bridge the gap from flat geometry to the film-grade MetaHuman quality demonstrated in the reference render, execute the following steps strictly in sequence:
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 10.1: Tier 2 Meso Wrinkle Engine (Photo-Derived Shape-from-Shading)     │
+│ ──> Extract real crow's feet, brow furrows, and laugh lines from photos      │
+└──────────────────────────────────────┬───────────────────────────────────────┘
+                                       │
+                                       ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 10.2: Tier 3 Micro Pore Engine (4K Anatomical Zone Synthesis)          │
+│ ──> Synthesize 50-micron follicles, cheek pores, lip striations, neck bands  │
+└──────────────────────────────────────┬───────────────────────────────────────┘
+                                       │
+                                       ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 10.3: Multi-Tier Fusion & PBR Material Coupling                         │
+│ ──> Fuse displacements; derive Cavity AO from Laplacian; dual-lobe roughness │
+└──────────────────────────────────────┬───────────────────────────────────────┘
+                                       │
+                                       ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 10.4: Automated Film-Grade Blender Cycles Studio Engine                 │
+│ ──> Headless .blend generator with Random Walk SSS & 3-point studio lighting │
+└──────────────────────────────────────┬───────────────────────────────────────┘
+                                       │
+                                       ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 10.5: End-to-End Pipeline Integration & Benchmark Turnaround            │
+│ ──> Full pipeline run on test portraits; verify collar pinning; deliver .blend│
+└──────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-### Phase 0: Foundation, P0 Bug Fixes & Honest Failure Verification
-> **Objective:** Fix the critical defects identified in `DOCS/00_code_review.md`, eliminate every silent fallback that masks pipeline failures, install an automated test suite, and ensure the pipeline fails loudly and honestly when dependencies or weights are missing.
+### Step 10.1: Tier 2 Meso Wrinkle Engine (`src/stage3_detail/photometric_detail.py`)
+> **Goal:** Stop asking a neural network to guess wrinkles. The subject's high-resolution portrait photos *already* record their exact crow's feet, forehead furrows, and laugh lines. Extract them directly into UV displacement space.
 
-#### Subphase 0.1: Core FLAME Loader Replacement (P0 Fix)
-- [x] Replace `src/utils/flame_model.py` with the robust implementation in `DOCS/flame_model.py`.
-- [x] Verify `shapedirs` unpacking: `shapedirs[:, :, :300]` for shape, `shapedirs[:, :, 300:400]` for expression (fix `KeyError: 'exprdirs'`).
-- [x] Implement Chumpy compatibility shim with NumPy aliases (`np.bool`, `np.int`, `np.float`) and `_ChumpyStub` fallback.
-- [x] Enforce FLAME native coordinate units in **metres** (`[-0.13, 0.13]m`) with explicit `scale_to_mm` parameter.
-- [x] Implement Rodrigues axis-angle rotation and Linear Blend Skinning (LBS) in pure NumPy for jaw/neck/eye joints (`theta`).
-- [x] Implement vectorised vertex normal calculation (`vertex_normals`) replacing per-face Python loops.
-
-#### Subphase 0.2: Eliminate Silent Fallbacks Across All Modules (P1 Fix)
-- [x] **`src/stage0_preprocess/detector.py`:** Remove fake detection fallback (`det_score=0.99`, `yaw=0.0`); raise `RuntimeError` if InsightFace is unavailable.
-- [x] **`src/utils/validation.py`:** Fix `insightface.model_zoo.get_model('buffalo_l')` crash; use `FaceAnalysis.get(img)` and extract `normed_embedding`. Eliminate bare `except Exception: pass`.
-- [x] **`src/stage1_identity/inference.py`:** Remove silent `np.zeros(300)` mean-face fallback; raise explicit error if MICA weights or architecture fail to load.
-- [x] **`src/stage2_expression/encoder.py`:** Remove `zeros((128,128))` fake detail fallback; load SMIRK encoder weights by stripping `smirk_encoder.` key prefix.
-- [x] **`src/pipeline.py`:** Remove 5023 coincident vertex / degenerate OBJ fallback; raise `FileNotFoundError` if FLAME model is missing.
-- [x] **`src/stage3_detail/data.py`:** Remove all-zero tensor fallback when displacement files are missing; restore `raise RuntimeError`.
-- [x] **`evaluation/identity_score.py`:** Delete fallback comparing photo to itself (`render = photo`); require real rendered mesh image or raise `FileNotFoundError`.
-
-#### Subphase 0.3: Dependency & Environment Harmonization
-- [x] Update `requirements.txt`: Remove PyPI `nvdiffrast`, remove unused `open3d`/`mediapipe`, add `chumpy`, `ninja`, `pytest`.
-- [x] Document Kaggle install command for `nvdiffrast` (`pip install git+https://github.com/NVlabs/nvdiffrast.git --no-build-isolation`).
-- [x] Document Kaggle NumPy 2.x downgrade pattern with mandatory kernel restart in Cell 1 (`DOCS/kaggle_environment.md`).
-- [x] Update `configs/default.yaml`: Document FLAME version selection, set default fusion temperature/exponent, eliminate dead configuration fields.
-
-#### Subphase 0.4: Test Suite Installation & Gate Verification
-- [x] Create `tests/test_flame.py`: Assert 5023 vertices, no NaNs, template bounds within `[-0.25, 0.25]`m, zero-pose deviation `< 1e-6`, jaw rotation moves vertices.
-- [x] Create `tests/test_validation.py`: Assert rejection on no face, different individuals, and extreme angular deviation.
-- [x] Create `tests/test_identity_score.py`: Assert `compute_identity_score` raises when preview PNG is missing.
-- [x] Run `python3 -m unittest discover tests` locally: **Confirm that tests fail honestly on missing assets** rather than passing trivially (34 passing unit tests).
-
-**Phase 0 Gate:**
-1. `src/utils/flame_model.py` passes all unit tests with zero NaNs and real LBS articulation.
-2. Every module raises explicit exceptions on missing weights/dependencies.
-3. Automated test suite exists and is wired into CI/local verification.
+- [ ] **Multi-Scale Steerable Filter:**
+  - Decompose backprojected portrait textures into high-frequency luminance gradients:
+    $$I_{\text{high}} = I_{\text{albedo}} - G_{\sigma} * I_{\text{albedo}} \quad (\sigma \approx 8 - 12\,\text{px})$$
+- [ ] **Photometric Normal Deviation Estimation:**
+  - Using calibrated view directions and base surface normals, convert high-pass luminance gradients into surface normal perturbations $\Delta \vec{n}_{\text{meso}}(u, v)$.
+- [ ] **Poisson Gradient Integration to Displacement:**
+  - Integrate surface normal slopes into height displacements $D_{\text{meso}}(u, v)$ via Poisson solver:
+    $$\nabla^2 D_{\text{meso}} = \frac{\partial \Delta n_x}{\partial u} + \frac{\partial \Delta n_y}{\partial v}$$
+- [ ] **Multi-View Confidence Blending:**
+  - Fuse displacement estimates from frontal, left-45°, and right-45° views using angle-weighted cosine visibility masks.
+- [ ] **Unit Tests:** Add `tests/test_photometric_detail.py` verifying gradient extraction, zero NaNs, and seamless UV blending.
 
 ---
 
-### Phase 1: Multi-View Inference Baseline (Stages 0, 1, 2)
-> **Objective:** Stand up an inference-only pipeline that takes 3–5 portraits of a subject and outputs a canonical neutral `.obj` base mesh with verified identity shape. No training.
+### Step 10.2: Tier 3 Micro Pore Engine (`src/stage3_detail/anatomical_pores.py`)
+> **Goal:** Synthesize true 50-micron epidermal pores and cellular micro-texture calibrated strictly to human facial anatomy (Texturing.xyz / MetaHuman standard).
 
-#### Subphase 1.1: MICA Model Integration & Preprocessing Fixes
-- [x] Vendor MICA repository via pinned Git submodule (`vendor/MICA`).
-- [x] Fix input crop color space: Convert OpenCV BGR crop to **RGB** (`crop_112[:, :, ::-1]`).
-- [x] Fix input crop normalization: Scale from `[0, 1]` to **`[-1, 1]`** via `(img - 127.5) / 127.5`.
-- [x] Implement thin Python adapter matching MICA's actual constructor signature (`config`, `flame_model`).
-
-#### Subphase 1.2: Multi-View Fusion in Embedding Space
-- [x] Refactor `encode_multiview`: Extract ArcFace embeddings per view, normalize, and fuse in **embedding space** prior to shape regression MLP.
-- [x] Implement frontality weighting: $w_i = \text{det\_score}_i \cdot \cos^2(\text{yaw}_i)$.
-- [x] Provide fallback $\beta$-space fusion with tunable temperature $T$ if backbone cannot be separated from regressor.
-
-#### Subphase 1.3: Stage 2 Expression Separation & Canonical Neutral Normalization
-- [x] Wrap SMIRK encoder to extract 100-D expression $\psi$ and 15-D pose $\theta$.
-- [x] Remove `coarse_detail` references from pipeline, config, and manifest (Stage 2 is expression/pose only).
-- [x] Enforce base mesh normalization: Output geometry decoded strictly with $\psi = 0$ and $\theta = 0$.
-- [x] Save extracted expression $\psi$ and pose $\theta$ to `manifest.json` for downstream ARKit blendshape retargeting.
-
-#### Subphase 1.4: Real Offscreen Preview Rendering
-- [x] Implement `render_neutral_preview(mesh_obj, out_png, size=512)`: Orthographic Lambertian grey shaded render of frontal neutral base mesh.
-- [x] Calibrate ArcFace cosine similarity distribution across known-good rendered neutral meshes (`calibrate_identity_threshold`).
-
-#### Subphase 1.5: Kaggle Phase 1 Baseline Notebook
-- [x] Stand up `notebooks/kaggle/phase1_inference_baseline.ipynb`.
-- [x] Wire multi-subject inference loop across 5 test subjects.
-- [x] Assert pairwise $\beta$ Euclidean distance between all pairs: $\|\beta_a - \beta_b\| > 10^{-3}$ (verifying no mean-face fallback).
-- [x] Generate rendered previews and compute real identity scores.
-
-**Phase 1 Gate:**
-1. 5 subjects produce 5 distinct `.obj` meshes with $\|\beta_a - \beta_b\| > 10^{-3}$.
-2. Every output directory contains a valid rendered `head_mesh.png` and complete `manifest.json`.
-3. Identity verification score exceeds calibrated baseline on real renders.
+- [ ] **Procedural Basis Functions:**
+  - Implement multi-octave cellular Voronoi-Worley basis functions combined with Gabor directional wavelets.
+- [ ] **Anatomical Zone Modulation:**
+  - Wire to `src/stage8_pbr/material_stack.py` facial zone masks:
+    * **T-Zone / Nose:** Large dilated circular follicles ($0.15 - 0.35\,\text{mm}$, isotropic).
+    * **Cheeks:** Fine elliptical pores ($0.05 - 0.12\,\text{mm}$) oriented along Langer's skin tension lines.
+    * **Lips (Vermilion):** Vertical micro-creases and dermal papillary ridges ($0.10 - 0.25\,\text{mm}$, strictly vertical).
+    * **Forehead:** Directional transverse micro-furrows ($0.08 - 0.22\,\text{mm}$).
+    * **Neck:** Concentric tension bands with strict collar pinning ($\Delta v \equiv 0$ on lowest 20%).
+- [ ] **4096² & 1024² Multi-Resolution Generation:**
+  - Support full 4K procedural rasterization for film rendering and 1024² downsampled maps for real-time engines.
+- [ ] **Unit Tests:** Add `tests/test_anatomical_pores.py` asserting zone depth ranges, pore density variations, and boundary safety.
 
 ---
 
-### Phase 2: Identity Regressor Demographic Fine-Tuning (Stage 1)
-> **Objective:** Fine-tune MICA's regression head on target demographic data to beat pretrained MICA on the NoW benchmark ($< 0.90\text{mm}$ median error).
+### Step 10.3: Multi-Tier Fusion & PBR Material Coupling
+> **Goal:** Combine Macro, Meso, and Micro geometry into cohesive PBR maps where light physically interacts with pore crevices.
 
-#### Subphase 2.1: Training Data Preparation
-- [x] Assemble registered FLAME scans dataset format (`src/stage1_identity/data.py`).
-- [x] Implement subject-stratified split to prevent subject leakage across train/val sets.
-- [ ] Upload registered dataset archive to private Kaggle Dataset (`face-geo-training-data-stage1`).
-
-#### Subphase 2.2: DDP Training Script with PyTorch 2.4+ AMP
-- [x] Build `src/stage1_identity/trainer.py` using `torch.amp.autocast('cuda', dtype=torch.float16)` and `torch.amp.GradScaler('cuda')`.
-- [x] Implement multi-GPU DistributedDataParallel (DDP) across both T4 GPUs via `torchrun --nproc_per_node=2`.
-- [x] Implement 11.5-hour session timer with automatic emergency checkpoint save.
-- [x] Stand up `notebooks/kaggle/phase2_identity_finetune.ipynb` for T4x2 training.
-
-#### Subphase 2.3: Verification on NoW Benchmark
-- [ ] Run fine-tuning session on Kaggle T4x2.
-- [ ] Evaluate fine-tuned checkpoint on NoW validation set (< 0.90mm median target).
-- [ ] Push verified checkpoint to Kaggle Models registry with FLAME version metadata.
-
-**Phase 2 Gate:**
-1. Fine-tuned model achieves lower median error than pretrained baseline on NoW.
-2. Identity similarity improves on 20 held-out photographic portraits.
-3. Checkpoint registered on Kaggle Models.
+- [ ] **Displacement Fusion:**
+  - Composite multi-tier displacement:
+    $$D_{\text{total}}(u, v) = D_{\text{macro}}(u, v) + D_{\text{meso}}(u, v) + D_{\text{micro}}(u, v)$$
+  - Export lossless 16-bit unsigned PNG ($[0, 65535]$, midlevel $0.50$, scale $5.0\,\text{mm}$).
+- [ ] **Micro-Cavity & Ambient Occlusion Coupling:**
+  - Update `src/stage8_pbr/material_stack.py` to derive micro-cavity directly from the negative Laplacian of the combined displacement:
+    $$\text{Cavity}(u, v) = \text{clip}\left(1.0 - \beta_{\text{cavity}} \cdot \max(0, -\nabla^2 D_{\text{total}}), 0.0, 1.0\right)$$
+  - Ensures pore bottoms and deep wrinkle crevasses receive zero ambient light bounce.
+- [ ] **Dual-Lobe Specular Roughness Map:**
+  - Modulate base skin roughness ($0.45 - 0.60$) with sebum coat sheen ($0.15 - 0.25$) concentrated in the T-zone and eyelid margins.
+- [ ] **Tangent-Space Normal Map:**
+  - Compute tangent normal map from the composite displacement heightfield.
 
 ---
 
-### Phase 2.5: Geometry Preprocessing & UV Displacement Dataset Engine
-> **Objective:** Transform raw high-resolution 3D scans (e.g. FaceScape) into paired 512×512 UV displacement maps, neutral position maps, normal maps, and facial validity masks. Run on CPU sessions (0 GPU quota).
+### Step 10.4: Automated Film-Grade Blender Cycles Studio Engine (`scripts/render_blender_film.py`)
+> **Goal:** Automate headless production `.blend` scene generation and 2048² turnaround rendering with cinema-grade look-dev lighting matching the user's reference image.
 
-#### Subphase 2.1: Ray-Mesh Geometry Correspondence
-- [x] Implement surface ray-casting using `trimesh.ray`: Cast rays from each coarse FLAME vertex along its normal vector to intersect scan surface.
-- [x] Compute signed displacement: $\delta_v = (p_{\text{intersect}} - v_{\text{flame}}) \cdot n_v$.
-- [x] Record `hit_mask`: Exclude non-intersecting or self-occluded vertices.
-
-#### Subphase 2.2: Barycentric UV Triangle Rasterization
-- [x] Integrate FLAME UV coordinates (`head_template.obj` / `FLAME_texture.npz`).
-- [x] Implement barycentric triangle rasterizer over FLAME UV layout at 512×512 resolution (`rasterize_uv_maps`).
-- [x] Interpolate per-vertex displacement across triangles; dilate mask and edge values across UV seams to avoid border artifacts.
-- [x] Rasterize neutral position map and unit normal map.
-
-#### Subphase 2.3: Dataset Normalization & Storage Contract
-- [x] Measure corpus-wide absolute displacement 99th percentile ($p_{99}$).
-- [x] Save `normalization_stats.json` containing measured $p_{99}$ value, sample count, and date.
-- [x] Enforce lossless storage contract:
-  - Write: $d_{\text{norm}} = \text{clip}(d_{\text{mm}} / p_{99}, -1, 1)$, saved as 16-bit uint PNG ($[0, 65535]$) or float16 `.npy`.
-  - Read: $d = (u16 / 65535.0) \times 2.0 - 1.0 \in [-1, 1]$.
-  - Inference: $d_{\text{mm}} = d_{\text{model}} \times p_{99}$.
-- [x] Unit test: Verify round-trip conversion error $< 1/65535$ (`test_displacement_preprocessing.py`).
-
-#### Subphase 2.4: Subject-Stratified Split & Packaging
-- [x] Split dataset strictly by unique **Subject ID** (not filename) to prevent smile vs. neutral data leakage.
-- [x] Stand up `notebooks/kaggle/phase2_5_geometry_preprocessing.ipynb` (runs on CPU session, 0 GPU quota).
-- [ ] Package preprocessed dataset into private Kaggle Dataset (`face-geo-uv-displacement-512`).
-
-**Phase 2.5 Gate:**
-1. Script processes scans and generates real `*_disp`, `*_pos`, `*_norm`, and `*_mask` maps.
-2. Valid facial mask coverage is measured and verified ($> 50\%$ UV canvas).
-3. Round-trip normalization test passes.
-4. Ran completely on CPU Kaggle session with 0 GPU quota consumed.
+- [ ] **Headless Blender Python Script (`bpy`):**
+  - Build `scripts/render_blender_film.py` executable headlessly via `blender -b -P scripts/render_blender_film.py -- [args]`.
+- [ ] **Adaptive Micro-Polygon Subdivision:**
+  - Enable Catmull-Clark adaptive subdivision on the neutral head mesh with dicing rate = 1.0 px/polygon at render time.
+- [ ] **Principled BSDF Skin Shader Node Tree:**
+  - Connect Delighted Albedo $\to$ Base Color.
+  - Connect Roughness Map $\to$ Roughness (Non-Color).
+  - Connect SSS Thickness $\to$ Subsurface Weight.
+  - Set Subsurface Method to **`RANDOM_WALK_SKIN`** with red vascular scatter radius `(1.0, 0.25, 0.12)` and IOR $1.40$.
+  - Connect Tangent Normal Map $\to$ Normal.
+  - Connect 16-bit Displacement $\to$ Material Output Displacement (scale $0.005\,\text{m}$, midlevel $0.5$).
+- [ ] **Cinematic 3-Point Lighting Rig:**
+  - **Key Light:** Area lamp ($180\,\text{W}$, $4500\,\text{K}$ warm white) at $+45^\circ$ Yaw, $+30^\circ$ Pitch.
+  - **Fill Light:** Area lamp ($45\,\text{W}$, $6500\,\text{K}$ daylight) at $-45^\circ$ Yaw, $+10^\circ$ Pitch.
+  - **Rim/Sun Light:** Sharp directional lamp ($350\,\text{W}$, $5500\,\text{K}$) at $+135^\circ$ Yaw, $+45^\circ$ Pitch to carve the jawline silhouette.
+- [ ] **Camera & Color Management:**
+  - 85mm prime portrait lens with shallow depth of field ($f/2.8$).
+  - Color management set to `AgX` or `Filmic` with `Medium High Contrast`.
+- [ ] **Deliverables:**
+  - Render high-resolution portrait turnaround (`film_render_cycles.png`).
+  - Save production-ready, artist-editable `.blend` scene (`studio_scene.blend`).
 
 ---
 
-### Phase 3: Adversarial High-Frequency Detail Synthesis (Detail GAN)
-> **Objective:** Train a generator/discriminator pair to synthesize 512×512 UV displacement maps containing subject-specific micro-wrinkles and pore texture, conditioned on multi-view features and neutral coarse geometry.
+### Step 10.5: End-to-End Pipeline Integration & Benchmark Turnaround
+> **Goal:** Wire all components into the single-command orchestrator, verify system invariants, and validate against benchmark portraits.
 
-#### Subphase 3.1: Generator Architecture Upgrades (P1 Fixes)
-- [x] Replace `nn.BatchNorm2d` with `nn.InstanceNorm2d(affine=True)` or `nn.GroupNorm(8)` to eliminate batch-coupling artifacts and batch-size-4 noise.
-- [x] Fix cross-attention bottleneck: Add LayerNorm and residual connection ($q = q + \text{MultiViewAttention}(\text{LN}(q), \text{feats})$) to preserve spatial features and AdaIN conditioning.
-- [x] Verify bilinear upsampling in decoder path (no checkerboard artifacts).
-
-#### Subphase 3.2: Discriminator & Loss Recipe Upgrades (P1 Fixes)
-- [x] PatchGAN architecture with Spectral Normalization evaluating 70×70 receptive field patches.
-- [x] Fix lazy R1 penalty accumulation: Remove `opt_d.zero_grad()` before R1 backward; accumulate R1 gradients with adversarial gradients every 16 steps.
-- [x] Force R1 gradient calculation strictly in **FP32** (`autocast(enabled=False)`).
-- [x] Masked L1 reconstruction loss: Restrict computation strictly to valid UV pixels ($\text{mask} = 1$).
-- [x] Anneal reconstruction weight $\lambda_{\text{recon}}$ from 100 to 10 over 50k steps.
-
-#### Subphase 3.3: EMA & Model Serialization (P1 Fix)
-- [x] Fix `update_ema`: Copy model buffers (`running_mean`, `running_var`) in addition to parameter interpolation.
-- [x] Enforce upload gate in `scripts/upload_to_kaggle_models.py`: Require `ema_generator.pt` and verified `normalization_stats.json`.
-- [x] Stand up `notebooks/kaggle/phase3_detail_gan_train.ipynb` for T4×2 DDP execution.
-- [x] Comprehensive test suite `tests/test_stage3_detail.py` verifying architecture, losses, EMA, and gates.
-
-#### Subphase 3.4: Pilot Run & Full Training on Kaggle T4×2
-- [ ] Pilot run: Train on 50 subjects for 5k steps to verify loss convergence, non-zero recon loss, and batch output std $> 0.01$.
-- [ ] Full training run: 50k steps across 2×T4 using DDP and PyTorch 2.4+ AMP (~15–20 wall-clock hours over 2 weekly quotas).
-- [ ] Monitor health metrics every 100 steps (D real/fake accuracy, G loss, batch diversity).
-
-**Phase 3 Gate:**
-1. Pilot run demonstrates non-zero loss and distinct wrinkle maps.
-2. Batch output standard deviation remains $> 0.01$ throughout training (no mode collapse).
-3. Surface-detail Chamfer distance improves over coarse Stage 1 baseline on held-out test scans.
-4. ArcFace identity score does not drop more than 0.05 from Phase 2 baseline.
+- [ ] **Pipeline Orchestrator Wiring:**
+  - Update `src/pipeline.py` and `scripts/production_inference.py` to invoke Tier 2, Tier 3, Stage 8 PBR, Stage 5 FBX export, and the Blender film rendering pass.
+- [ ] **System Invariant Validation:**
+  - Enforce bitwise collar pinning: verify $\Delta v \equiv 0.000000\,\text{mm}$ across the lowest 20% of vertices.
+  - Enforce zero silent fallbacks: ensure explicit exceptions are raised if required inputs are invalid.
+- [ ] **Benchmark Execution:**
+  - Run full pipeline on test portraits (`carell`, `connelly`, `lawrence`).
+  - Inspect output rendered images and `.blend` scenes to verify visual parity with the MetaHuman reference standard.
+- [ ] **Full Test Suite Run:**
+  - Ensure all unit tests pass with $>95\%$ coverage.
 
 ---
 
-### Phase 4: Commercial Licensing & Own-Capture Asset Track (Parallel)
-> **Objective:** Resolve legal and commercial viability by migrating foundation components to open licenses, establishing clean data provenance, and building an in-house capture rig.
+## 4. Operational Invariants for Phase 10
 
-#### Subphase 4.1: FLAME 2023 Open Migration
-- [ ] Evaluate MPI's FLAME 2023 Open release (released November 2025 under **CC-BY-4.0**).
-- [ ] Migrate `configs/default.yaml` to `FLAME2023_Open` if commercial shipping is required.
-- [ ] Integrate MPI parameter conversion utilities if using MICA/SMIRK heads trained on 2020 basis.
-
-#### Subphase 4.2: Dependency License Audit
-- [ ] Audit licenses for every component in pipeline:
-  - FLAME (2020 Non-Commercial vs. 2023 Open CC-BY-4.0).
-  - MICA (Non-Commercial Research).
-  - SMIRK / EMOCA (Research Non-Commercial).
-  - FaceScape (Explicit No Commercial Use).
-  - nvdiffrast (NVIDIA Source Code License).
-  - ICT-FaceKit (MIT - Fully Commercial).
-- [ ] Establish architecture boundary: Treat research models as offline "teachers" to supervise custom clean models if needed.
-
-#### Subphase 4.3: FaceScape Commercial Licensing Inquiry
-- [ ] Submit commercial license inquiry to Nanjing University team (`nju3dv@gmail.com`).
-- [ ] Document terms, pricing, and restrictions.
-
-#### Subphase 4.4: In-House Photogrammetry Capture Protocol
-- [ ] Define multi-camera portrait capture protocol (minimum 5 synchronized or static poses: frontal, $\pm 45^\circ$ quarter, $\pm 90^\circ$ profile).
-- [ ] Draft commercial talent release and consent documentation.
-- [ ] Execute pilot capture on 10 internal subjects to validate pipeline independence from academic datasets.
-
-**Phase 4 Gate:**
-1. Clear legal pathway established for all runtime components.
-2. FLAME version decision permanently recorded.
-3. In-house capture protocol verified end-to-end.
-
----
-
-### Phase 5: Production Retopology, ARKit-52 Rigging & LODs (Stage 5)
-> **Objective:** Bridge the research mesh to a production game asset by retopologizing FLAME to ICT-FaceKit, generating 52 ARKit blendshapes, creating 4 LODs, and adding a skeletal armature. Runs entirely on CPU sessions (0 GPU quota).
-
-#### Subphase 5.1: FLAME → ICT-FaceKit Dense Correspondence Matrix ($W$)
-- [x] Load FLAME neutral template (5023 verts) and ICT-FaceKit neutral template (~24.5k tris).
-- [x] Align templates via anatomical landmarks and compute non-rigid iterative closest point (NICP).
-- [x] For each ICT vertex, compute barycentric coordinates $(f, u, v, w)$ relative to corresponding FLAME triangle.
-- [x] Construct sparse correspondence matrix $W \in \mathbb{R}^{N_{\text{ICT}} \times 5023}$ (`SparseMatrixCSR`).
-- [x] Validate round-trip error: $\|v_{\text{ICT}} - W v_{\text{FLAME}}\| < 1.0\text{mm}$ across facial surface.
-
-#### Subphase 5.2: ARKit-52 Semantic Blendshape Generation
-- [x] Extract ICT-FaceKit's 52 ARKit-compatible blendshape target meshes (MIT licensed).
-- [x] Implement deformation transfer (Sumner & Popović) to transfer generic ARKit deltas onto the subject-specific identity mesh.
-- [x] Define standard `blendshapes.json` delta format:
-  ```json
-  {
-    "version": "1.0",
-    "units": "millimeters",
-    "num_vertices": 5023,
-    "blendshapes": {
-      "jawOpen": [[dx0, dy0, dz0], [dx1, dy1, dz1], ...],
-      "mouthSmileLeft": [[dx0, dy0, dz0], ...]
-    }
-  }
-  ```
-- [x] Enforce boundary condition pinning: neck perimeter vertices displacement clamped strictly to zero.
-
-#### Subphase 5.3: LOD Decimation Preserving Shape Keys
-- [x] Implement multi-resolution decimation for neutral mesh targeting LOD levels:
-  - LOD0: ~24,500 triangles (100% detail)
-  - LOD1: ~5,000 triangles (~20%)
-  - LOD2: ~2,000 triangles (~8%)
-  - LOD3: ~500 triangles (~2%)
-- [x] Re-project ARKit shape keys onto decimated LOD topologies using barycentric transfer.
-- [x] Validate that all 52 shape keys exist and animate without topology tears across all 4 LODs.
-
-#### Subphase 5.4: Skeletal Armature & Rigging
-- [x] Construct 5-joint armature hierarchy (`head`, `neck`, `jaw`, `eye_L`, `eye_R`) with correct joint center locations.
-- [x] Transfer FLAME joint regression weights to target topology via correspondence matrix $W$.
-- [x] Bind mesh to armature with Linear Blend Skinning weights (strictly enforcing $\sum w_j = 1$).
-
-#### Subphase 5.5: Headless Blender Export Script Fixes (P2 Fix)
-- [x] Fix vector arithmetic in `scripts/blender_export.py`: Use `mathutils.Vector` when applying shape key offsets.
-- [x] Add explicit object selection before export: `mesh_obj.select_set(True)` and active view layer object.
-- [x] Export clean FBX configured for Unreal Engine 5 (`FBX_SCALE_ALL`, `mesh_smooth_type='FACE'`, shape keys and armature included).
-
-**Phase 5 Gate:**
-1. Correspondence matrix $W$ transfers geometry with $< 1\text{mm}$ error.
-2. FBX contains all 52 ARKit blendshapes and 4 LOD levels.
-3. Mesh imports into UE5 without smoothing group or scale warnings.
-4. Driving `jawOpen` in UE5 Live Link articulates the jaw cleanly.
-
----
-
-### Phase 6: Detail Hybridization & Static Facial Hair
-> **Objective:** Enhance micro-displacement with diffusion-based detail synthesis, sharpen adversarially, and validate static facial hair geometry (stubble and short beards).
-
-#### Subphase 6.1: UV-Space Denoising Diffusion Backbone
-- [ ] Build 1-channel U-Net diffusion backbone operating on 512×512 displacement space.
-- [ ] Condition on neutral position map, normal map, multi-view image features, and identity codes.
-- [ ] Train diffusion model on preprocessed UV displacement dataset for coverage and stability.
-
-#### Subphase 6.2: Adversarial Sharpening Pass
-- [ ] Freeze trained diffusion backbone.
-- [ ] Utilize Stage 3 PatchGAN discriminator as a sharpness critic.
-- [ ] Fine-tune diffusion model with discriminator gradient feedback to enforce sharp pore and wrinkle boundaries.
-
-#### Subphase 6.3: Static Facial Hair Validation
-- [ ] Evaluate displacement fidelity on 20 subjects with visible facial hair (stubble, mustache, short beard).
-- [ ] Determine if displacement maps sufficiently capture short hair volume.
-- [ ] If displacement is insufficient, implement Approach 2: Static card geometry generation anchored to scalp/jaw mask.
-
-**Phase 6 Gate:**
-1. Hybrid model produces higher high-frequency FFT power spectrum than GAN alone.
-2. Facial hair stubble/short beard is cleanly represented without blurring into skin.
-
----
-
-### Phase 7: Headless Production Packaging & UE5 Live Link Export
-> **Objective:** Integrate all pipeline stages into an automated production script that produces validated, game-ready assets and comprehensive run manifests. Runs on CPU sessions (0 GPU quota).
-
-#### Subphase 7.1: Production Inference Script
-- [ ] Build `scripts/production_inference.py` orchestrating Stages 0 → 1 → 2 → 3 → 5.
-- [ ] Enforce automated input validation and neutral base mesh normalization.
-- [ ] Package output directory structure:
-  ```
-  outputs/{run_id}/
-  ├── head_lod0.fbx
-  ├── head_lod1.fbx
-  ├── head_lod2.fbx
-  ├── head_lod3.fbx
-  ├── displacement_512.png (or .npy)
-  ├── preview_render.png
-  └── manifest.json
-  ```
-
-#### Subphase 7.2: Comprehensive Manifest Generation
-- [ ] Generate detailed `manifest.json` recording:
-  - `pipeline_version`, `run_id`, `timestamp`.
-  - Input photo metadata (filename, detection score, estimated yaw).
-  - Model versions and checkpoint handles.
-  - Normalization parameters (`displacement_p99_mm`).
-  - Topology specs (ICT-FaceKit, ARKit-52, LOD vertex/triangle counts).
-  - Identity retention scores against input photos.
-  - `degraded` flag (indicating whether any stage ran in fallback mode).
-
-#### Subphase 7.3: Unreal Engine 5 Validation
-- [ ] Import exported FBX into Unreal Engine 5.4+.
-- [ ] Connect mesh to Live Link Face iOS application via ARKit pose blueprint.
-- [ ] Verify real-time facial tracking, blendshape delta fidelity, and LOD transition distances.
-
-**Phase 7 Gate:**
-1. Single command executes end-to-end inference from photos to FBX.
-2. Live Link Face drives facial animation in UE5 at $\ge 60\text{ fps}$.
-3. Run manifest accurately reflects all runtime parameters.
-
----
-
-### Phase 8: Comprehensive Benchmarking & Quality Assurance
-> **Objective:** Rigorously evaluate the complete pipeline against ground-truth 3D scans and benchmark models (NoW, FaceScape, Meshy 7.1).
-
-#### Subphase 8.1: Geometric Metric Suite
-- [ ] Implement point-to-surface Chamfer distance calculation.
-- [ ] Implement surface normal angular error measurement.
-- [ ] Implement high-frequency FFT power spectrum curvature comparison (surface-detail proxy).
-
-#### Subphase 8.2: Benchmark Comparison Matrix
-- [ ] Run evaluation suite on 50 held-out test subjects:
-  - Compare coarse mesh against NoW benchmark ($< 0.90\text{mm}$ median error).
-  - Compare full detailed geometry against ground-truth FaceScape scans.
-  - Compare reconstructed meshes against Meshy 7.1 outputs on the same photo sets.
-- [ ] Document results in project `README.md` and benchmark report.
-
-**Phase 8 Gate:**
-1. Statistically significant geometric improvement over Meshy 7.1 on facial micro-displacement.
-2. NoW median error strictly $< 0.90\text{mm}$.
-3. Automated evaluation suite runs headlessly and outputs standardized tables.
-
----
-
-## Immediate Next Actions (Phase 0 Step 1)
-
-1. **Step 0.1:** Replace `src/utils/flame_model.py` with `DOCS/flame_model.py` to fix the `exprdirs` KeyError and Chumpy unpickler bug.
-2. **Step 0.2:** Remove silent fallbacks in `src/stage0_preprocess/detector.py`, `src/utils/validation.py`, and `evaluation/identity_score.py`.
-3. **Step 0.3:** Update `requirements.txt` and fix Kaggle installation recipes.
-4. **Step 0.4:** Write the Phase 0 test suite in `tests/` and run `pytest`.
+1. **Zero Silent Fallbacks:** Always raise explicit errors (`FileNotFoundError`, `RuntimeError`) with clear setup instructions.
+2. **Collar Seam Contract:** Displacements on the lowest 20% of vertices (neck boundary collar) must remain strictly pinned to zero (`masks['neck_pinning']`).
+3. **No Low-Frequency GAN Retraining:** Never spend GPU quota training GANs on low-frequency optical tracking datasets (Meta Multiface).
+4. **Shading Completeness:** Never evaluate facial assets without Random Walk Subsurface Scattering and calibrated 3-point lighting.
