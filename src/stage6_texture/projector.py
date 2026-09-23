@@ -265,13 +265,21 @@ class MultiViewTextureProjector:
             # Extract pose info from detection
             landmarks_5 = getattr(det, 'landmarks_5', None)
             if landmarks_5 is None:
+                landmarks_5 = getattr(det, 'landmarks_5pt', None)
+            if landmarks_5 is None:
                 landmarks_5 = getattr(det, 'kps', None)
             if landmarks_5 is None:
                 continue
 
-            yaw = getattr(det, 'yaw', 0.0)
-            pitch = getattr(det, 'pitch', 0.0)
-            roll = getattr(det, 'roll', 0.0)
+            yaw = getattr(det, 'yaw', None)
+            if yaw is None:
+                yaw = getattr(det, 'yaw_deg', 0.0)
+            pitch = getattr(det, 'pitch', None)
+            if pitch is None:
+                pitch = getattr(det, 'pitch_deg', 0.0)
+            roll = getattr(det, 'roll', None)
+            if roll is None:
+                roll = getattr(det, 'roll_deg', 0.0)
 
             # Build projection matrix for this view
             P = estimate_camera_projection_matrix(

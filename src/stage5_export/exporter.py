@@ -142,14 +142,27 @@ class Stage5Exporter:
             armature_path = str(armature_file.resolve())
             print(f"[Stage 5] Saved skeletal rig to: {armature_file.name}")
 
-        # 5. Export base OBJ
+        # 5. Export base OBJ with UVs
         base_obj_path = out_path / "head_mesh_neutral.obj"
+        try:
+            from src.stage3_detail.rasterizer import load_flame_uv_layout
+            uv_coords, uv_faces = load_flame_uv_layout()
+            has_uvs = (len(uv_faces) == len(active_faces))
+        except Exception:
+            has_uvs = False
+
         with open(base_obj_path, "w") as fp:
-            fp.write(f"# Face Geometry Pipeline - Neutral Base Mesh\n")
+            fp.write(f"# Face Geometry Pipeline - Neutral Base Mesh with UVs\n")
             for vert in active_vertices:
                 fp.write(f"v {vert[0]:.6f} {vert[1]:.6f} {vert[2]:.6f}\n")
-            for face in active_faces + 1:
-                fp.write(f"f {face[0]} {face[1]} {face[2]}\n")
+            if has_uvs:
+                for vt in uv_coords:
+                    fp.write(f"vt {vt[0]:.6f} {vt[1]:.6f}\n")
+                for fv, fvt in zip(active_faces + 1, uv_faces + 1):
+                    fp.write(f"f {fv[0]}/{fvt[0]} {fv[1]}/{fvt[1]} {fv[2]}/{fvt[2]}\n")
+            else:
+                for face in active_faces + 1:
+                    fp.write(f"f {face[0]} {face[1]} {face[2]}\n")
 
         # 5.5 High-Resolution Loop Subdivision (Film-Quality Mesh)
         subdiv_manifest = None

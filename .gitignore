@@ -48,8 +48,16 @@ scratch/
 outputs/*
 !outputs/production_batch_showcase.png
 !outputs/focal_mask_overlay.png
+!outputs/model_comparison_1500_vs_32291.png
 !outputs/production_batch/
 !outputs/production_batch/**
+!outputs/online_test/
+!outputs/online_test/**
+!outputs/comparisons/
+!outputs/comparisons/**
+outputs/comparisons/*/*_320k_real_scan_displaced.obj
+!outputs/scratch_dense_test/
+!outputs/scratch_dense_test/*.png
 !outputs/kaggle_phase3_gan/
 outputs/kaggle_phase3_gan/*
 !outputs/kaggle_phase3_gan/phase-3-detail-gan-train.log

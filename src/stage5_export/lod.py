@@ -253,8 +253,24 @@ def export_lod_chain_assets(
             fp.write(f"# Face Mesh {lod_name} - Triangles: {len(f)}\n")
             for vert in v:
                 fp.write(f"v {vert[0]:.6f} {vert[1]:.6f} {vert[2]:.6f}\n")
-            for face in f + 1:
-                fp.write(f"f {face[0]} {face[1]} {face[2]}\n")
+            if lod_name == 'LOD0':
+                try:
+                    from src.stage3_detail.rasterizer import load_flame_uv_layout
+                    uv_coords, uv_faces = load_flame_uv_layout()
+                    if len(uv_faces) == len(f):
+                        for vt in uv_coords:
+                            fp.write(f"vt {vt[0]:.6f} {vt[1]:.6f}\n")
+                        for fv, fvt in zip(f + 1, uv_faces + 1):
+                            fp.write(f"f {fv[0]}/{fvt[0]} {fv[1]}/{fvt[1]} {fv[2]}/{fvt[2]}\n")
+                    else:
+                        for face in f + 1:
+                            fp.write(f"f {face[0]} {face[1]} {face[2]}\n")
+                except Exception:
+                    for face in f + 1:
+                        fp.write(f"f {face[0]} {face[1]} {face[2]}\n")
+            else:
+                for face in f + 1:
+                    fp.write(f"f {face[0]} {face[1]} {face[2]}\n")
 
         bs_path = out_dir / f"blendshapes_{lod_name.lower()}.json"
         bs_payload = {

@@ -342,7 +342,7 @@ class FaceGeoPipeline:
         # ── TIER 1 + 2 + 3 MULTI-TIER GEOMETRY & PBR COUPLING ────────────────
         stage3_cfg = self.cfg.get('stage3', {}) if isinstance(self.cfg, dict) else {}
         detail_res = int(stage3_cfg.get('resolution', 1024))
-        detail_maps = {}
+        detail_maps = dict(texture_maps)
 
         # 1. Tier 1 Macro displacement (optional GAN checkpoint if available)
         disp_macro = None
@@ -674,12 +674,25 @@ class FaceGeoPipeline:
         facial_hair_manifest: Optional[dict] = None,
     ) -> Dict[str, str]:
         obj_path = output_dir / 'head_mesh.obj'
+        try:
+            from src.stage3_detail.rasterizer import load_flame_uv_layout
+            uv_coords, uv_faces = load_flame_uv_layout()
+            has_uvs = (len(uv_faces) == len(faces))
+        except Exception:
+            has_uvs = False
+
         with open(obj_path, 'w') as f:
-            f.write("# Face Geometry Pipeline - Canonical Neutral Base Mesh\n")
+            f.write("# Face Geometry Pipeline - Canonical Neutral Base Mesh with UVs\n")
             for v in vertices:
                 f.write(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
-            for face in faces + 1:  # OBJ indices are 1-based
-                f.write(f"f {face[0]} {face[1]} {face[2]}\n")
+            if has_uvs:
+                for vt in uv_coords:
+                    f.write(f"vt {vt[0]:.6f} {vt[1]:.6f}\n")
+                for fv, fvt in zip(faces + 1, uv_faces + 1):
+                    f.write(f"f {fv[0]}/{fvt[0]} {fv[1]}/{fvt[1]} {fv[2]}/{fvt[2]}\n")
+            else:
+                for face in faces + 1:  # OBJ indices are 1-based
+                    f.write(f"f {face[0]} {face[1]} {face[2]}\n")
 
         preview_path = output_dir / 'head_mesh.png'
         try:

@@ -91,23 +91,29 @@ def resolve_texture_paths(args) -> Dict[str, Optional[Path]]:
 
     if args.textures_dir:
         tdir = Path(args.textures_dir)
+        search_dirs = [tdir, tdir / "textures"]
         if tdir.is_dir():
-            # Search candidate patterns
             candidates = {
-                'albedo': ['albedo_diffuse.png', 'albedo.png', 'diffuse.png', 'projected_raw.png'],
-                'roughness': ['film_roughness_base.png', 'roughness_base.png', 'roughness_map.png', 'roughness.png'],
+                'albedo': ['head_albedo_diffuse.png', 'albedo_diffuse.png', 'head_projected_raw.png', 'albedo.png', 'diffuse.png', 'projected_raw.png'],
+                'roughness': ['head_roughness_map.png', 'film_roughness_base.png', 'roughness_base.png', 'roughness_map.png', 'roughness.png'],
                 'roughness_coat': ['film_roughness_coat.png', 'roughness_coat.png'],
                 'normal': ['film_normal.png', 'normal.png', 'head_normal.png', 'head_normal_map.png', 'normal_map.png'],
                 'displacement': ['film_displacement_16bit.png', 'displacement_16bit.png', 'head_displacement_16bit.png', 'disp.png'],
-                'cavity': ['film_cavity_ao.png', 'cavity_ao.png', 'cavity_ao_map.png', 'cavity.png'],
-                'sss': ['sss_thickness_map.png', 'sss_thickness.png', 'sss.png'],
+                'cavity': ['head_cavity_ao_map.png', 'film_cavity_ao.png', 'cavity_ao.png', 'cavity_ao_map.png', 'cavity.png'],
+                'sss': ['head_sss_thickness_map.png', 'sss_thickness_map.png', 'sss_thickness.png', 'sss.png'],
             }
             for key, patterns in candidates.items():
                 if textures[key] is None or not textures[key].exists():
-                    for pat in patterns:
-                        p = tdir / pat
-                        if p.exists():
-                            textures[key] = p
+                    found = False
+                    for sdir in search_dirs:
+                        if sdir.is_dir():
+                            for pat in patterns:
+                                p = sdir / pat
+                                if p.exists():
+                                    textures[key] = p
+                                    found = True
+                                    break
+                        if found:
                             break
 
     return textures
@@ -129,7 +135,8 @@ def build_blender_scene(args, textures: Dict[str, Optional[Path]]):
 
     # 2. Configure Cycles Render Engine
     scene.render.engine = 'CYCLES'
-    scene.cycles.feature_set = 'EXPERIMENTAL'  # Required for Adaptive Subdivision
+    if hasattr(scene.cycles, 'feature_set'):
+        scene.cycles.feature_set = 'EXPERIMENTAL'  # Required for Adaptive Subdivision
     scene.cycles.samples = int(args.samples)
     scene.render.resolution_x = int(args.resolution[0])
     scene.render.resolution_y = int(args.resolution[1])
@@ -300,37 +307,43 @@ def build_blender_scene(args, textures: Dict[str, Optional[Path]]):
         links.new(node_disp_img.outputs['Color'], node_disp.inputs['Height'])
         links.new(node_disp.outputs['Displacement'], node_output.inputs['Displacement'])
 
+    # Compute bounding box center and height for accurate framing
+    bbox = [head_obj.matrix_world @ mathutils.Vector(corner) for corner in head_obj.bound_box]
+    center = sum(bbox, mathutils.Vector((0.0, 0.0, 0.0))) / 8.0
+    height = max(p.z for p in bbox) - min(p.z for p in bbox)
+    cam_dist = max(0.9, height * 2.8)
+
     # 6. Construct Cinematic 3-Point Studio Lighting Rig
     # Key Light (Front-Left 45°, Warm Studio Area Lamp)
     key_data = bpy.data.lights.new(name="Key_Light_Data", type='AREA')
-    key_data.energy = 180.0
-    key_data.size = 0.8
+    key_data.energy = 80.0
+    key_data.size = 0.6
     key_data.color = (1.0, 0.95, 0.88)  # ~4500K warm white
     key_obj = bpy.data.objects.new(name="Key_Light", object_data=key_data)
     scene.collection.objects.link(key_obj)
-    key_obj.location = (-0.9, -1.2, 0.6)
-    _point_at(key_obj, head_obj.location)
+    key_obj.location = (center.x + 0.45, center.y - 0.90, center.z + 0.35)
+    _point_at(key_obj, center)
 
     # Fill Light (Front-Right -45°, Soft Ambient Daylight Area Lamp)
     fill_data = bpy.data.lights.new(name="Fill_Light_Data", type='AREA')
-    fill_data.energy = 45.0
-    fill_data.size = 1.5
+    fill_data.energy = 25.0
+    fill_data.size = 1.0
     fill_data.color = (0.85, 0.92, 1.0)  # ~6500K soft daylight
     fill_obj = bpy.data.objects.new(name="Fill_Light", object_data=fill_data)
     scene.collection.objects.link(fill_obj)
-    fill_obj.location = (1.2, -1.5, 0.2)
-    _point_at(fill_obj, head_obj.location)
+    fill_obj.location = (center.x - 0.55, center.y - 0.95, center.z + 0.15)
+    _point_at(fill_obj, center)
 
     # Rim / Sun Light (Back-Left 135°, Sharp Razor Silhouette Light)
     rim_data = bpy.data.lights.new(name="Rim_Light_Data", type='SPOT')
-    rim_data.energy = 350.0
+    rim_data.energy = 150.0
     rim_data.spot_size = math.radians(45.0)
     rim_data.spot_blend = 0.3
     rim_data.color = (0.95, 0.98, 1.0)  # ~5500K neutral white
     rim_obj = bpy.data.objects.new(name="Rim_Light", object_data=rim_data)
     scene.collection.objects.link(rim_obj)
-    rim_obj.location = (-0.8, 1.1, 0.9)
-    _point_at(rim_obj, head_obj.location)
+    rim_obj.location = (center.x - 0.40, center.y + 0.60, center.z + 0.45)
+    _point_at(rim_obj, center)
 
     # 7. Setup 85mm Prime Portrait Camera
     cam_data = bpy.data.cameras.new(name="Camera_85mm_Data")
@@ -344,8 +357,8 @@ def build_blender_scene(args, textures: Dict[str, Optional[Path]]):
     cam_obj = bpy.data.objects.new(name="Camera_Portrait_85mm", object_data=cam_data)
     scene.collection.objects.link(cam_obj)
     scene.camera = cam_obj
-    cam_obj.location = (0.0, -1.8, 0.05)
-    _point_at(cam_obj, head_obj.location)
+    cam_obj.location = (center.x, center.y - cam_dist, center.z)
+    _point_at(cam_obj, center)
 
     # 8. Render Image Output
     out_path = Path(args.output).resolve()
@@ -380,8 +393,10 @@ def _point_at(obj, target_location):
 
 def find_blender_binary(explicit_path: Optional[str] = None) -> Optional[str]:
     """Locates Blender executable across operating systems."""
-    if explicit_path and Path(explicit_path).is_file():
-        return explicit_path
+    if explicit_path is not None:
+        if Path(explicit_path).is_file() and os.access(explicit_path, os.X_OK):
+            return explicit_path
+        return None
 
     found = shutil.which("blender")
     if found:

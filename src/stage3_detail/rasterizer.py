@@ -18,21 +18,29 @@ def load_flame_uv_layout(uv_template_path: Optional[str] = None) -> Tuple[np.nda
 
     root = Path(__file__).resolve().parent.parent.parent
     candidates.extend([
-        root / 'vendor' / 'MICA' / 'data' / 'FLAME2020' / 'head_template.obj',
-        root / 'data' / 'FLAME2020' / 'head_template.obj',
         root / 'data' / 'flame_model' / 'head_template.obj',
         root / 'data' / 'flame_model' / 'FLAME_texture.npz',
+        root / 'data' / 'FLAME2020' / 'head_template.obj',
+        root / 'vendor' / 'MICA' / 'data' / 'FLAME2020' / 'head_template.obj',
     ])
 
     resolved_path = None
     for cand in candidates:
         if cand.exists():
-            resolved_path = cand
-            break
+            if cand.suffix == '.npz':
+                resolved_path = cand
+                break
+            elif cand.suffix == '.obj':
+                # Check if it actually contains UV texture vertices
+                with open(cand, 'r') as fp:
+                    has_uv = any(line.startswith('vt ') for line in fp)
+                if has_uv:
+                    resolved_path = cand
+                    break
 
     if resolved_path is None:
         raise FileNotFoundError(
-            "FLAME UV template not found. Please provide head_template.obj or FLAME_texture.npz."
+            "FLAME UV template with valid 'vt' coordinates not found. Please verify data/flame_model/head_template.obj."
         )
 
     if resolved_path.suffix == '.npz':
@@ -81,6 +89,41 @@ def load_flame_uv_layout(uv_template_path: Optional[str] = None) -> Tuple[np.nda
         return uv_coords, uv_faces
     else:
         raise ValueError(f"Unsupported UV template format: {resolved_path.suffix}")
+
+
+def load_flame_geometry_faces(template_path: Optional[str] = None) -> np.ndarray:
+    """
+    Loads canonical FLAME 3D geometry triangle faces (referencing 3D vertex indices 0..5022).
+    """
+    candidates = []
+    if template_path:
+        candidates.append(Path(template_path))
+    root = Path(__file__).resolve().parent.parent.parent
+    candidates.extend([
+        root / 'data' / 'flame_model' / 'head_template.obj',
+        root / 'data' / 'flame_model' / 'FLAME_texture.npz',
+        root / 'data' / 'FLAME2020' / 'head_template.obj',
+        root / 'vendor' / 'MICA' / 'data' / 'FLAME2020' / 'head_template.obj',
+    ])
+    for cand in candidates:
+        if cand.exists() and cand.suffix == '.obj':
+            faces = []
+            with open(cand, 'r') as f:
+                for line in f:
+                    if line.startswith('f '):
+                        parts = line.strip().split()[1:4]
+                        f_idx = [int(p.split('/')[0]) - 1 for p in parts if p.split('/')[0]]
+                        if len(f_idx) == 3:
+                            faces.append(f_idx)
+            if len(faces) > 0:
+                return np.array(faces, dtype=np.int32)
+        elif cand.exists() and cand.suffix == '.npz':
+            data = np.load(cand)
+            if 'f' in data:
+                return data['f'].astype(np.int32)
+            elif 'faces' in data:
+                return data['faces'].astype(np.int32)
+    raise FileNotFoundError("FLAME geometry faces could not be loaded from template OBJ/NPZ.")
 
 
 def compute_vertex_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:

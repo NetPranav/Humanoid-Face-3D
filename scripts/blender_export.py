@@ -57,6 +57,8 @@ def parse_args():
     parser.add_argument("--hair_skinning", help="Path to hair cards skinning JSON", default=None)
     parser.add_argument("--normal_map", help="Path to normal map PNG", default=None)
     parser.add_argument("--displacement_map", help="Path to displacement PNG", default=None)
+    parser.add_argument("--albedo", help="Path to albedo PNG", default=None)
+    parser.add_argument("--roughness", help="Path to roughness PNG", default=None)
     parser.add_argument("--render_preview", help="Path to output render preview PNG", default=None)
     return parser.parse_args(cli_args)
 
@@ -70,7 +72,13 @@ def create_or_get_material(name: str):
     return mat
 
 
-def setup_skin_material(mat, normal_map_path: str = None, disp_map_path: str = None):
+def setup_skin_material(
+    mat,
+    normal_map_path: str = None,
+    disp_map_path: str = None,
+    albedo_map_path: str = None,
+    roughness_map_path: str = None,
+):
     import bpy
     if not mat.use_nodes:
         mat.use_nodes = True
@@ -81,13 +89,28 @@ def setup_skin_material(mat, normal_map_path: str = None, disp_map_path: str = N
     if not bsdf:
         return
 
-    # Base skin tone
+    # Base skin tone default
     bsdf.inputs["Base Color"].default_value = (0.75, 0.62, 0.53, 1.0)
     if "Roughness" in bsdf.inputs:
         bsdf.inputs["Roughness"].default_value = 0.45
     if "Subsurface" in bsdf.inputs:
         bsdf.inputs["Subsurface"].default_value = 0.15
 
+    # Albedo texture
+    if albedo_map_path and Path(albedo_map_path).exists():
+        alb_node = nodes.new("ShaderNodeTexImage")
+        alb_node.image = bpy.data.images.load(str(Path(albedo_map_path).resolve()))
+        links.new(alb_node.outputs["Color"], bsdf.inputs["Base Color"])
+
+    # Roughness texture
+    if roughness_map_path and Path(roughness_map_path).exists():
+        rough_node = nodes.new("ShaderNodeTexImage")
+        rough_node.image = bpy.data.images.load(str(Path(roughness_map_path).resolve()))
+        rough_node.image.colorspace_settings.name = "Non-Color"
+        if "Roughness" in bsdf.inputs:
+            links.new(rough_node.outputs["Color"], bsdf.inputs["Roughness"])
+
+    # Tangent Normal map
     if normal_map_path and Path(normal_map_path).exists():
         tex_node = nodes.new("ShaderNodeTexImage")
         tex_node.image = bpy.data.images.load(str(Path(normal_map_path).resolve()))
@@ -165,11 +188,11 @@ def build_armature(armature_path: str):
         bone = arm_data_block.edit_bones.new(joint_name)
         bone.head = pos
         if joint_name == "jaw":
-            bone.tail = pos + Vector([0.0, -10.0, 15.0])
+            bone.tail = pos + Vector([0.0, -0.02, -0.03])
         elif "eye" in joint_name:
-            bone.tail = pos + Vector([0.0, 0.0, 15.0])
+            bone.tail = pos + Vector([0.0, -0.02, 0.0])
         else:
-            bone.tail = pos + Vector([0.0, 20.0, 0.0])
+            bone.tail = pos + Vector([0.0, 0.0, 0.04])
         edit_bones[joint_name] = bone
 
     for joint_name, j_info in joints.items():
@@ -178,6 +201,7 @@ def build_armature(armature_path: str):
             edit_bones[joint_name].parent = edit_bones[parent_name]
 
     bpy.ops.object.mode_set(mode='OBJECT')
+    armature_obj.hide_render = True
 
     weights = arm_data.get("skinning_weights", [])
     joint_names = arm_data.get("joint_names", list(joints.keys()))
@@ -274,41 +298,43 @@ def setup_lighting_and_render_preview(output_render_path: str, target_mesh):
         # Calculate center and bounds
         bbox = [target_mesh.matrix_world @ Vector(corner) for corner in target_mesh.bound_box]
         center = sum(bbox, Vector((0, 0, 0))) / 8.0
-        height = max(p.y for p in bbox) - min(p.y for p in bbox)
+        height = max(p.z for p in bbox) - min(p.z for p in bbox)
 
         # 1. Camera: positioned in front of face along -Y looking at center
         cam_data = bpy.data.cameras.new("Preview_Camera")
-        cam_data.lens = 50.0  # Portrait lens
+        cam_data.lens = 75.0  # Portrait lens
         cam_obj = bpy.data.objects.new("Preview_Camera", cam_data)
         bpy.context.scene.collection.objects.link(cam_obj)
         bpy.context.scene.camera = cam_obj
 
-        cam_dist = height * 2.2
-        cam_obj.location = Vector([center.x, center.y - cam_dist, center.z + height * 0.05])
+        cam_dist = max(0.85, height * 2.5)
+        cam_obj.location = Vector([center.x, center.y - cam_dist, center.z])
         direction = center - cam_obj.location
         rot_quat = direction.to_track_quat('-Z', 'Y')
         cam_obj.rotation_euler = rot_quat.to_euler()
 
         # 2. Key Light
-        key_light_data = bpy.data.lights.new(name="Key_Light", type='POINT')
-        key_light_data.energy = 450.0
+        key_light_data = bpy.data.lights.new(name="Key_Light", type='AREA')
+        key_light_data.energy = 100.0
+        key_light_data.size = 0.6
         key_light = bpy.data.objects.new("Key_Light", key_light_data)
-        key_light.location = Vector([center.x + height * 1.0, center.y - height * 1.5, center.z + height * 1.0])
+        key_light.location = Vector([center.x + 0.45, center.y - 0.90, center.z + 0.35])
         bpy.context.scene.collection.objects.link(key_light)
 
         # 3. Fill Light
-        fill_light_data = bpy.data.lights.new(name="Fill_Light", type='POINT')
-        fill_light_data.energy = 180.0
+        fill_light_data = bpy.data.lights.new(name="Fill_Light", type='AREA')
+        fill_light_data.energy = 35.0
+        fill_light_data.size = 1.0
         fill_light = bpy.data.objects.new("Fill_Light", fill_light_data)
-        fill_light.location = Vector([center.x - height * 1.0, center.y - height * 1.2, center.z + height * 0.3])
+        fill_light.location = Vector([center.x - 0.55, center.y - 0.95, center.z + 0.15])
         bpy.context.scene.collection.objects.link(fill_light)
 
-        # 4. Fast Workbench render settings (no Cycles CPU compilation overhead)
+        # 4. Render settings
         scene = bpy.context.scene
-        scene.render.engine = 'BLENDER_WORKBENCH'
-        if hasattr(scene, 'display'):
+        scene.render.engine = 'BLENDER_EEVEE_NEXT' if 'BLENDER_EEVEE_NEXT' in [e.identifier for e in scene.render.bl_rna.properties['engine'].enum_items] else 'BLENDER_WORKBENCH'
+        if scene.render.engine == 'BLENDER_WORKBENCH' and hasattr(scene, 'display'):
             scene.display.shading.light = 'STUDIO'
-            scene.display.shading.color_type = 'MATERIAL'
+            scene.display.shading.color_type = 'TEXTURE'
         scene.render.resolution_x = 512
         scene.render.resolution_y = 512
         scene.render.filepath = str(Path(output_render_path).resolve())
@@ -347,7 +373,28 @@ def export_fbx_pipeline(args):
 
     # 5. UE5 Skin Material Slot & Textures
     skin_mat = create_or_get_material("M_Head_Skin")
-    setup_skin_material(skin_mat, normal_map_path=args.normal_map, disp_map_path=args.displacement_map)
+    albedo_candidate = args.albedo
+    roughness_candidate = args.roughness
+    if not albedo_candidate and args.normal_map:
+        norm_dir = Path(args.normal_map).parent
+        for cand in [norm_dir / "head_albedo_diffuse.png", norm_dir / "textures" / "head_albedo_diffuse.png", norm_dir / "albedo.png"]:
+            if cand.exists():
+                albedo_candidate = str(cand)
+                break
+    if not roughness_candidate and args.normal_map:
+        norm_dir = Path(args.normal_map).parent
+        for cand in [norm_dir / "film_roughness_base.png", norm_dir / "textures" / "head_roughness_map.png", norm_dir / "roughness.png"]:
+            if cand.exists():
+                roughness_candidate = str(cand)
+                break
+
+    setup_skin_material(
+        skin_mat,
+        normal_map_path=args.normal_map,
+        disp_map_path=args.displacement_map,
+        albedo_map_path=albedo_candidate,
+        roughness_map_path=roughness_candidate,
+    )
     if head_mesh.data.materials:
         head_mesh.data.materials[0] = skin_mat
     else:
@@ -416,8 +463,8 @@ def export_fbx_pipeline(args):
         primary_bone_axis='Y',
         secondary_bone_axis='X',
         bake_anim=False,
-        path_mode='AUTO',
-        embed_textures=False
+        path_mode='COPY',
+        embed_textures=True
     )
     print(f"[Blender Export] Successfully generated UE5 Live Link FBX: {out_path.name}")
 
@@ -471,7 +518,9 @@ def export_fbx_pipeline(args):
                 use_mesh_modifiers=True,
                 mesh_smooth_type='FACE',
                 add_leaf_bones=False,
-                bake_anim=False
+                bake_anim=False,
+                path_mode='COPY',
+                embed_textures=True
             )
             # Remove lod mesh from scene to keep clean
             bpy.data.objects.remove(lod_mesh, do_unlink=True)

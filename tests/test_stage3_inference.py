@@ -19,6 +19,7 @@ from src.stage3_detail.inference import DetailSynthesizer
 from src.stage3_detail.generator import DetailGenerator
 from src.stage3_detail.rasterizer import (
     load_flame_uv_layout,
+    load_flame_geometry_faces,
     compute_vertex_normals,
     rasterize_uv_maps
 )
@@ -34,8 +35,7 @@ class TestStage3Inference(unittest.TestCase):
         # Synthetic minimal test mesh (5023 vertices to match FLAME parameterization)
         np.random.seed(42)
         self.verts = np.random.randn(5023, 3).astype(np.float32) * 0.1
-        _, uv_faces = load_flame_uv_layout()
-        self.faces = uv_faces
+        self.faces = load_flame_geometry_faces()
 
     @unittest.skipIf(torch is None, "PyTorch required for DetailSynthesizer inference")
     def test_zero_silent_fallbacks_on_missing_weights(self):

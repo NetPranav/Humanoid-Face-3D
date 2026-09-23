@@ -9,6 +9,7 @@ from src.stage3_detail.anatomical_pores import AnatomicalPoreSynthesizer
 from src.stage3_detail.fusion import MultiTierDetailFusion
 from src.stage3_detail.rasterizer import (
     load_flame_uv_layout,
+    load_flame_geometry_faces,
     compute_vertex_normals,
     rasterize_uv_maps
 )
@@ -24,6 +25,7 @@ __all__ = [
     'AnatomicalPoreSynthesizer',
     'MultiTierDetailFusion',
     'load_flame_uv_layout',
+    'load_flame_geometry_faces',
     'compute_vertex_normals',
     'rasterize_uv_maps',
 ]

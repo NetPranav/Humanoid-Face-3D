@@ -1,0 +1,37 @@
+{
+  "status": "success",
+  "is_clean_shaven": false,
+  "config": {
+    "mustache_density": 0.75,
+    "chin_density": 0.85,
+    "jawline_density": 0.8,
+    "sideburns_density": 0.7,
+    "eyebrows_density": 0.0,
+    "stubble_length_mm": 0.55,
+    "stubble_density": 0.85,
+    "generate_stubble": true,
+    "generate_cards": false,
+    "card_density": 120,
+    "card_length_mm": 8.0,
+    "card_width_mm": 1.6,
+    "card_curvature": 0.3,
+    "card_segments": 2,
+    "alpha_softness": 0.5
+  },
+  "stubble": {
+    "generated": true,
+    "max_stubble_relief_mm": 0.35224586725234985,
+    "maps": {
+      "displacement_png": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon/facial_hair/head_stubble_displacement_16bit.png",
+      "normal_png": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon/facial_hair/head_stubble_normal_map.png",
+      "p99_scale_mm": "1.5"
+    }
+  },
+  "hair_cards": {
+    "generated": false,
+    "num_cards": 0,
+    "num_vertices": 0,
+    "num_triangles": 0,
+    "files": {}
+  }
+}

@@ -12,6 +12,32 @@ class FaceDetection:
     crop_112: np.ndarray      # (112, 112, 3) aligned crop for MICA / ArcFace
     crop_224: Optional[np.ndarray] = None  # (224, 224, 3) aligned crop for SMIRK / EMOCA
     embedding: Optional[np.ndarray] = None  # (512,) ArcFace normalized feature embedding
+    pitch_deg: float = 0.0    # Head pitch angle in degrees
+    roll_deg: float = 0.0     # Head roll angle in degrees
+
+    @property
+    def landmarks_5(self) -> np.ndarray:
+        return self.landmarks_5pt
+
+    @property
+    def kps(self) -> np.ndarray:
+        return self.landmarks_5pt
+
+    @property
+    def yaw(self) -> float:
+        return self.yaw_deg
+
+    @property
+    def pitch(self) -> float:
+        return self.pitch_deg
+
+    @property
+    def roll(self) -> float:
+        return self.roll_deg
+
+    @property
+    def score(self) -> float:
+        return self.det_score
 
 class FaceDetector:
     """
@@ -51,9 +77,24 @@ class FaceDetector:
                 crop_112=cv2.resize(image_bgr, (112, 112)),
                 crop_224=cv2.resize(image_bgr, (224, 224)),
                 embedding=np.zeros(512, dtype=np.float32),
+                pitch_deg=0.0,
+                roll_deg=0.0,
             )]
 
         faces = self.app.get(image_bgr)
+        if not faces and self.allow_degraded:
+            h, w = image_bgr.shape[:2]
+            return [FaceDetection(
+                bbox=np.array([0, 0, w, h], dtype=np.float32),
+                landmarks_5pt=np.zeros((5, 2), dtype=np.float32),
+                det_score=0.99,
+                yaw_deg=0.0,
+                crop_112=cv2.resize(image_bgr, (112, 112)),
+                crop_224=cv2.resize(image_bgr, (224, 224)),
+                embedding=np.zeros(512, dtype=np.float32),
+                pitch_deg=0.0,
+                roll_deg=0.0,
+            )]
         results = []
         for face in faces:
             emb = None
@@ -64,7 +105,9 @@ class FaceDetector:
 
             # InsightFace buffalo_l populates pose as [pitch, yaw, roll]
             pose = getattr(face, 'pose', None)
+            pitch = float(pose[0]) if pose is not None and len(pose) >= 1 else 0.0
             yaw = float(pose[1]) if pose is not None and len(pose) >= 2 else 0.0
+            roll = float(pose[2]) if pose is not None and len(pose) >= 3 else 0.0
 
             det = FaceDetection(
                 bbox=face.bbox,
@@ -74,6 +117,8 @@ class FaceDetector:
                 crop_112=self._align_crop(image_bgr, face.kps, size=112),
                 crop_224=self._align_crop(image_bgr, face.kps, size=224),
                 embedding=emb,
+                pitch_deg=pitch,
+                roll_deg=roll,
             )
             results.append(det)
         return results
