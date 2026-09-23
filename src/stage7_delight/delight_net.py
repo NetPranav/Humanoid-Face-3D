@@ -78,48 +78,99 @@ class UVInpainter:
         else:
             work_tex = texture.copy()
 
-        work_mask = (mask > 127).astype(np.float32)
+        h, w = texture.shape[:2]
+        obs_mask = (mask > 127).astype(np.uint8)
 
-        # Store original values to preserve them exactly
-        original_tex = work_tex.copy()
-        original_mask = work_mask.copy()
+        # If already completely filled, return unmodified
+        if np.all(obs_mask > 0):
+            return (texture.copy(), mask.copy())
 
-        for _iter in range(self.iterations):
-            # Check if all pixels are filled
-            if np.all(work_mask > 0.5):
-                break
+        # Step 1: Sample the subject's central facial skin tone (L*a*b* / BGR baseline)
+        u_min, u_max = int(w * 0.38), int(w * 0.62)
+        v_min, v_max = int(h * 0.38), int(h * 0.68)
+        face_crop = work_tex[v_min:v_max, u_min:u_max]
+        face_mask = obs_mask[v_min:v_max, u_min:u_max] > 0
 
-            # Blur the texture (weighted by mask to avoid bleeding black)
-            tex_weighted = work_tex * work_mask[:, :, np.newaxis]
-            blurred_tex = cv2.GaussianBlur(
-                tex_weighted, (self.kernel_size, self.kernel_size), 0
+        if np.any(face_mask):
+            valid_face_pixels = face_crop[face_mask]
+            median_skin = np.median(valid_face_pixels, axis=0)
+        else:
+            # Fallback to any observed pixels
+            valid_pixels = work_tex[obs_mask > 0]
+            if len(valid_pixels) > 0:
+                median_skin = np.median(valid_pixels, axis=0)
+            else:
+                median_skin = np.array([125.0, 115.0, 175.0], dtype=np.float32)
+
+        # Step 2: Multi-scale Fast-Marching / Telea harmonic field for smooth boundary transition
+        scale_div = max(1, w // 512)
+        small_w = w // scale_div
+        small_h = h // scale_div
+        small_tex = cv2.resize(work_tex, (small_w, small_h), interpolation=cv2.INTER_AREA)
+        small_mask = cv2.resize(obs_mask, (small_w, small_h), interpolation=cv2.INTER_NEAREST)
+
+        inv_mask_small = (small_mask == 0).astype(np.uint8)
+        if np.any(small_mask > 0) and np.any(inv_mask_small > 0):
+            inpaint_small = cv2.inpaint(
+                small_tex.astype(np.uint8),
+                inv_mask_small,
+                inpaintRadius=5,
+                flags=cv2.INPAINT_TELEA
             )
-            blurred_mask = cv2.GaussianBlur(
-                work_mask, (self.kernel_size, self.kernel_size), 0
+            smooth_field = cv2.resize(
+                inpaint_small.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR
             )
+        else:
+            smooth_field = np.full((h, w, 3), median_skin, dtype=np.float32)
 
-            # Avoid division by zero
-            blurred_mask_safe = np.maximum(blurred_mask, 1e-8)
+        # Step 3: Distance transform from observed boundary to prevent directional ray smearing
+        inv_mask_full = (obs_mask == 0).astype(np.uint8)
+        dist = cv2.distanceTransform(inv_mask_full, cv2.DIST_L2, 5)
+        max_blend_dist = float(w) * 0.035  # ~70 pixels at 2048x2048
+        alpha = np.clip(dist / max_blend_dist, 0.0, 1.0)[:, :, np.newaxis]
 
-            # Normalise blurred values
-            for c in range(3):
-                blurred_tex[:, :, c] /= blurred_mask_safe
+        # Base anatomical skin canvas
+        base_canvas = np.full((h, w, 3), median_skin, dtype=np.float32)
 
-            # Fill only newly reachable pixels (mask was 0, blur reached > 0)
-            new_pixels = (work_mask < 0.5) & (blurred_mask > 0.01)
-            work_tex[new_pixels] = blurred_tex[new_pixels]
-            work_mask[new_pixels] = 1.0
+        # Eyeball islands: circular UV islands at top-left and top-right (anatomical sclera ivory)
+        sclera_color = np.array([232.0, 236.0, 238.0], dtype=np.float32)
+        eye_y_end = int(h * 0.18)
+        eye_x_left = int(w * 0.18)
+        eye_x_right = int(w * 0.82)
+        base_canvas[0:eye_y_end, 0:eye_x_left] = sclera_color
+        base_canvas[0:eye_y_end, eye_x_right:w] = sclera_color
 
-        # Restore original pixel values exactly where they existed
-        restore = original_mask > 0.5
-        work_tex[restore] = original_tex[restore]
+        # Anatomical zone warmth: modulate ears with microvascular tone
+        ear_mask = np.zeros((h, w), dtype=np.float32)
+        ear_mask[int(h * 0.38):int(h * 0.65), int(w * 0.10):int(w * 0.28)] = 1.0
+        ear_mask[int(h * 0.38):int(h * 0.65), int(w * 0.72):int(w * 0.90)] = 1.0
+        ear_blur = cv2.GaussianBlur(ear_mask, (0, 0), sigmaX=float(w) * 0.015)[:, :, np.newaxis]
 
-        filled_mask = (work_mask > 0.5).astype(np.uint8) * 255
+        # Warm capillary vascular boost for ears (+Red, +slight Green, -Blue in BGR)
+        base_canvas[:, :, 2] += ear_blur[:, :, 0] * 12.0
+        base_canvas[:, :, 1] += ear_blur[:, :, 0] * 3.0
+        base_canvas[:, :, 0] -= ear_blur[:, :, 0] * 3.0
+
+        # Blend smooth boundary field towards anatomical baseline canvas
+        synthesized = (1.0 - alpha) * smooth_field + alpha * base_canvas
+
+        # Step 4: Organic epidermal micro-porosity to eliminate flat plastic wax appearance
+        rng = np.random.RandomState(42)
+        dermal_noise = rng.normal(0.0, 2.2, (h, w, 3)).astype(np.float32)
+        synthesized += dermal_noise * alpha
+
+        # Step 5: Exact 100% preservation of observed photographic projection
+        final_tex = work_tex.copy()
+        unseen = (obs_mask == 0)
+        final_tex[unseen] = synthesized[unseen]
+        final_tex = np.clip(final_tex, 0.0, 255.0)
+
+        filled_mask = np.full((h, w), 255, dtype=np.uint8)
 
         if not is_float:
-            return np.clip(work_tex, 0, 255).astype(np.uint8), filled_mask
+            return final_tex.astype(np.uint8), filled_mask
         else:
-            return work_tex.astype(np.float32), filled_mask
+            return final_tex.astype(np.float32), filled_mask
 
 
 # ---------------------------------------------------------------------------
@@ -385,8 +436,8 @@ class DelightingPipeline:
             print("[Stage 7A] Running AI delighting (removing environment lighting)...")
             albedo_linear = self._run_neural_delight(inpainted, normal_map)
         else:
-            print("[Stage 7A] Applying gamma-correction fallback delighting...")
-            albedo_linear = self._gamma_delight(inpainted)
+            print("[Stage 7A] Applying dichromatic specular stripping & illumination delighting...")
+            albedo_linear = self._dichromatic_delight(inpainted)
 
         # Convert to sRGB for display
         albedo_srgb = np.clip(np.power(albedo_linear, 1.0 / 2.2) * 255, 0, 255).astype(np.uint8)
@@ -447,26 +498,45 @@ class DelightingPipeline:
 
         return albedo
 
-    def _gamma_delight(self, texture: np.ndarray) -> np.ndarray:
+    def _dichromatic_delight(self, texture: np.ndarray) -> np.ndarray:
         """
-        Fallback delighting: inverse gamma + luminance normalisation.
-        Not as good as neural delighting, but produces a reasonable baseline.
+        Dichromatic reflection delighting: decomposes reflected light into
+        diffuse body chromaticity and surface specular glare, stripping white
+        camera flash and ambient specular reflections before normalizing macro illumination.
         """
         rgb = texture.astype(np.float32) / 255.0
 
         # Linearise (inverse sRGB gamma)
         linear = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
 
-        # Compute luminance and normalize to reduce lighting variation
-        lum = 0.2126 * linear[:, :, 2] + 0.7152 * linear[:, :, 1] + 0.0722 * linear[:, :, 0]
-        mean_lum = np.mean(lum[lum > 0.01]) if np.any(lum > 0.01) else 0.5
-        target_lum = 0.35  # Average skin luminance in linear space
+        # HSV representation for specular saturation/luminance analysis
+        hsv = cv2.cvtColor(texture, cv2.COLOR_BGR2HSV).astype(np.float32) / 255.0
+        s_c = hsv[:, :, 1]
+        v_c = hsv[:, :, 2]
 
-        scale = target_lum / (mean_lum + 1e-8)
-        scale = np.clip(scale, 0.5, 2.0)
+        # Detect specular glare (high brightness + desaturation where flash bounced off sebum)
+        v_smooth = cv2.GaussianBlur(v_c, (0, 0), 25.0)
+        glare_mask = np.clip((v_c - 0.52) / 0.35, 0.0, 1.0) * np.clip((0.45 - s_c) / 0.35, 0.0, 1.0)
 
-        albedo = np.clip(linear * scale, 0, 1).astype(np.float32)
+        # Subtract specular component in linear space
+        excess_v = np.maximum(0.0, v_c - v_smooth * 0.9)
+        spec_component = glare_mask[:, :, None] * excess_v[:, :, None] * 0.85
+        diffuse_linear = np.clip(linear - spec_component, 0.0, 1.0)
+
+        # Macro illumination normalization: remove directional key light falloff
+        lum = 0.2126 * diffuse_linear[:, :, 2] + 0.7152 * diffuse_linear[:, :, 1] + 0.0722 * diffuse_linear[:, :, 0]
+        macro_illum = cv2.GaussianBlur(lum, (0, 0), 32.0)
+        macro_illum = np.clip(macro_illum, 0.15, 1.0)
+
+        target_lum = 0.38  # Canonical calibrated human skin linear luminance
+        albedo = diffuse_linear / (macro_illum[:, :, None] + 1e-4) * target_lum
+        albedo = np.clip(albedo, 0.0, 1.0).astype(np.float32)
+
         return albedo
+
+    def _gamma_delight(self, texture: np.ndarray) -> np.ndarray:
+        """Alias for backward compatibility."""
+        return self._dichromatic_delight(texture)
 
     def save_maps(
         self,

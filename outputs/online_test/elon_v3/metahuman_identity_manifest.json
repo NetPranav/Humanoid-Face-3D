@@ -1,0 +1,182 @@
+{
+  "format": "EpicGames_MeshToMetaHuman_v1",
+  "unit": "centimeters",
+  "scale_factor_from_meters": 100.0,
+  "mesh_path": "metahuman_neutral.obj",
+  "vertex_count": 5023,
+  "face_count": 9976,
+  "landmarks_3d_cm": {
+    "chin_gnathion": [
+      0.243,
+      -9.3295,
+      4.7241
+    ],
+    "jaw_angle_right": [
+      -7.0405,
+      -7.269,
+      -0.1683
+    ],
+    "jaw_angle_left": [
+      6.8757,
+      -7.2718,
+      -0.2947
+    ],
+    "jaw_temple_right": [
+      -8.7896,
+      1.3514,
+      -2.0657
+    ],
+    "jaw_temple_left": [
+      8.308,
+      1.4058,
+      -2.5871
+    ],
+    "brow_inner_right": [
+      -1.6652,
+      3.9108,
+      3.9757
+    ],
+    "brow_inner_left": [
+      1.4616,
+      3.9211,
+      5.1027
+    ],
+    "brow_arch_right": [
+      -3.747,
+      4.2238,
+      3.4298
+    ],
+    "brow_arch_left": [
+      3.6699,
+      4.1869,
+      3.5687
+    ],
+    "brow_outer_right": [
+      -5.5479,
+      3.6029,
+      2.2321
+    ],
+    "brow_outer_left": [
+      5.7307,
+      3.6317,
+      1.4128
+    ],
+    "nose_root_nasion": [
+      0.1787,
+      2.1279,
+      4.2956
+    ],
+    "nose_bridge": [
+      0.0442,
+      1.2405,
+      5.7347
+    ],
+    "nose_tip_pronasale": [
+      0.1364,
+      -0.0303,
+      6.791
+    ],
+    "subnasale": [
+      0.2544,
+      -1.9884,
+      5.4865
+    ],
+    "alar_right": [
+      -1.4138,
+      -1.9724,
+      5.0574
+    ],
+    "alar_left": [
+      1.4745,
+      -1.8594,
+      5.4568
+    ],
+    "eye_outer_right": [
+      -4.3985,
+      2.1405,
+      2.8772
+    ],
+    "eye_inner_right": [
+      -1.8029,
+      2.1657,
+      3.4252
+    ],
+    "eye_pupil_right": [
+      -2.6469,
+      2.5976,
+      3.5981
+    ],
+    "eye_outer_left": [
+      4.5515,
+      2.0508,
+      2.6817
+    ],
+    "eye_inner_left": [
+      1.7864,
+      2.074,
+      3.3874
+    ],
+    "eye_pupil_left": [
+      2.6783,
+      2.5327,
+      3.6812
+    ],
+    "mouth_corner_right_cheilion": [
+      -2.36,
+      -4.5733,
+      4.8873
+    ],
+    "mouth_corner_left_cheilion": [
+      2.7687,
+      -4.6979,
+      5.1299
+    ],
+    "upper_lip_apex_labrale_superius": [
+      0.2409,
+      -3.5683,
+      6.2688
+    ],
+    "lower_lip_apex_labrale_inferius": [
+      0.1572,
+      -4.838,
+      6.4568
+    ],
+    "oral_fissure_center": [
+      0.2623,
+      -4.1441,
+      5.7457
+    ]
+  },
+  "optical_components": {
+    "cornea_ior": 1.376,
+    "iris_radius_cm": 0.58,
+    "sclera_subsurface_weight": 0.12,
+    "skin_subsurface_weight": 0.08
+  },
+  "pbr_textures": {
+    "projected_texture": "outputs/online_test/elon_v3/textures/head_projected_raw.png",
+    "projection_mask": "outputs/online_test/elon_v3/textures/head_projection_mask.png",
+    "albedo": "outputs/online_test/elon_v3/textures/head_albedo_diffuse.png",
+    "albedo_diffuse": "outputs/online_test/elon_v3/textures/head_albedo_diffuse.png",
+    "albedo_diffuse_png": "outputs/online_test/elon_v3/textures/head_albedo_diffuse.png",
+    "albedo_linear": "outputs/online_test/elon_v3/textures/head_albedo_linear.exr",
+    "roughness_map": "outputs/online_test/elon_v3/textures/head_roughness_map.png",
+    "cavity_ao_map": "outputs/online_test/elon_v3/textures/head_cavity_ao_map.png",
+    "sss_thickness_map": "outputs/online_test/elon_v3/textures/head_sss_thickness_map.png",
+    "sss_thickness": "outputs/online_test/elon_v3/textures/head_sss_thickness_map.png",
+    "cavity": "outputs/online_test/elon_v3/textures/head_cavity_ao_map.png",
+    "roughness": "outputs/online_test/elon_v3/textures/head_roughness_map.png",
+    "displacement_png": "outputs/online_test/elon_v3/film_displacement_16bit.png",
+    "normal_png": "outputs/online_test/elon_v3/film_normal.png",
+    "cavity_ao_png": "outputs/online_test/elon_v3/film_cavity_ao.png",
+    "roughness_base_png": "outputs/online_test/elon_v3/film_roughness_base.png",
+    "roughness_coat_png": "outputs/online_test/elon_v3/film_roughness_coat.png",
+    "coat_weight_png": "outputs/online_test/elon_v3/film_coat_weight.png",
+    "displacement_16bit": "outputs/online_test/elon_v3/film_displacement_16bit.png",
+    "normal_map": "outputs/online_test/elon_v3/film_normal.png",
+    "cavity_ao": "outputs/online_test/elon_v3/film_cavity_ao.png",
+    "roughness_base": "outputs/online_test/elon_v3/film_roughness_base.png",
+    "roughness_coat": "outputs/online_test/elon_v3/film_roughness_coat.png",
+    "sss_thickness_png": "outputs/online_test/elon_v3/textures/head_sss_thickness_map.png"
+  }
+}

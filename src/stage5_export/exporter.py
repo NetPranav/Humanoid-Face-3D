@@ -37,6 +37,7 @@ from src.stage5_export.stylize import (
     StylizationParameters,
     resolve_stylization_params
 )
+from src.stage5_export.metahuman_bridge import MetaHumanBridgeExporter
 
 
 class Stage5Exporter:
@@ -243,6 +244,19 @@ class Stage5Exporter:
                 render_preview=render_preview_path,
             )
 
+        # 6.5. MetaHuman Bridge Export
+        metahuman_manifest = None
+        try:
+            bridge = MetaHumanBridgeExporter(flame_faces=active_faces, n_verts=len(active_vertices))
+            metahuman_manifest = bridge.export(
+                neutral_vertices=active_vertices,
+                output_dir=out_path,
+                texture_paths=detail_maps,
+                scale_to_cm=True,
+            )
+        except Exception as e:
+            print(f"[Stage 5 Warning] MetaHuman bridge export skipped: {e}")
+
         # 7. Package complete export manifest
         manifest = {
             "status": "success",
@@ -251,6 +265,7 @@ class Stage5Exporter:
             "armature_json": armature_path,
             "fbx_file": fbx_manifest.get("fbx_file"),
             "fbx_packaging": fbx_manifest,
+            "metahuman_bridge": metahuman_manifest,
             "lods": lod_manifest,
             "subdivision": subdiv_manifest,
             "stylization": stylization_info,

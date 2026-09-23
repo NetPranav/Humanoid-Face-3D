@@ -101,9 +101,23 @@ class FaceGeoPipeline:
                 return None
             try:
                 from src.stage3_detail.inference import DetailSynthesizer
+                root = Path(__file__).resolve().parent.parent
                 ckpt_p = stage3_cfg.get('checkpoint')
+                if ckpt_p is None:
+                    default_ckpt = root / 'models_cache' / 'stage3_detail' / 'ema_generator.pt'
+                    if default_ckpt.exists():
+                        ckpt_p = str(default_ckpt)
                 stats_p = stage3_cfg.get('stats')
+                if stats_p is None:
+                    default_stats = root / 'models_cache' / 'stage3_detail' / 'normalization_stats.json'
+                    if default_stats.exists():
+                        stats_p = str(default_stats)
                 uv_template_p = stage3_cfg.get('uv_template')
+                if uv_template_p is None:
+                    default_uv = root / 'data' / 'flame_model' / 'head_template.obj'
+                    if default_uv.exists():
+                        uv_template_p = str(default_uv)
+
                 self._stage3 = DetailSynthesizer(
                     checkpoint_path=ckpt_p,
                     stats_path=stats_p,
@@ -189,7 +203,7 @@ class FaceGeoPipeline:
         if self._meso_extractor is None:
             stage3_cfg = self.cfg.get('stage3', {}) if isinstance(self.cfg, dict) else {}
             res = int(stage3_cfg.get('resolution', 1024))
-            max_wrinkle = float(stage3_cfg.get('max_wrinkle_depth_mm', 1.20))
+            max_wrinkle = float(stage3_cfg.get('max_wrinkle_depth_mm', 0.35))
             from src.stage3_detail.photometric_detail import PhotometricDetailExtractor
             self._meso_extractor = PhotometricDetailExtractor(
                 resolution=res,
@@ -288,19 +302,52 @@ class FaceGeoPipeline:
             )
         neutral_vertices, faces = self.flame.decode_neutral(beta)
 
-        # ── Stage 1.5: Macro-Shape Non-Linear Residual Correction ────────────
+        # ── Stage 1.5: Non-Linear Contour Deformation & Residual Correction ─
         stage1_5_cfg = self.cfg.get('stage1_5', {}) if isinstance(self.cfg, dict) else {}
+        if stage1_5_cfg.get('enabled', True):
+            has_landmarks = any(getattr(d, 'landmark_3d_68', None) is not None for d in valid_dets)
+            if has_landmarks:
+                print("[Stage 1.5] Applying non-linear contour & landmark Laplacian deformation...")
+                try:
+                    from src.stage1_5_residual.contour_deformer import NonLinearContourDeformer
+                    deformer = NonLinearContourDeformer(
+                        flame_model=self.flame,
+                        lr=float(stage1_5_cfg.get('lr', 2e-4)),
+                        n_iterations=int(stage1_5_cfg.get('iterations', 80)),
+                        lambda_laplacian=float(stage1_5_cfg.get('lambda_laplacian', 600.0)),
+                        lambda_reg=float(stage1_5_cfg.get('lambda_reg', 60.0)),
+                        max_displacement_mm=float(stage1_5_cfg.get('max_displacement_mm', 18.0)),
+                    )
+                    img_shapes = []
+                    for p in photo_paths:
+                        try:
+                            im_tmp = cv2.imread(str(p))
+                            if im_tmp is not None:
+                                img_shapes.append(im_tmp.shape[:2])
+                            else:
+                                img_shapes.append((2048, 2048))
+                        except Exception:
+                            img_shapes.append((2048, 2048))
+
+                    deformed_v, delta_v = deformer.deform(
+                        base_vertices=neutral_vertices,
+                        detections=valid_dets,
+                        image_shapes=img_shapes,
+                    )
+                    neutral_vertices = deformed_v
+                except Exception as e:
+                    print(f"[Stage 1.5 Warning] Non-linear contour deformation skipped: {e}")
+
         residual_ckpt = self.model_dir / 'stage1_5/checkpoint_latest.pt'
-        if stage1_5_cfg.get('enabled', False) or residual_ckpt.exists():
-            print("[Stage 1.5] Applying macro-shape non-linear residual correction...")
+        if residual_ckpt.exists():
+            print("[Stage 1.5] Applying neural macro-shape residual correction...")
             try:
                 import torch
                 from src.stage1_5_residual.residual_net import MacroShapeResidualNet
                 device = 'cuda' if torch.cuda.is_available() else 'cpu'
                 res_net = MacroShapeResidualNet(flame_model=self.flame).to(device)
-                if residual_ckpt.exists():
-                    ckpt = torch.load(residual_ckpt, map_location=device)
-                    res_net.load_state_dict(ckpt.get('state_dict', ckpt), strict=False)
+                ckpt = torch.load(residual_ckpt, map_location=device)
+                res_net.load_state_dict(ckpt.get('state_dict', ckpt), strict=False)
                 res_net.eval()
                 with torch.no_grad():
                     v_in = torch.from_numpy(neutral_vertices).float().unsqueeze(0).to(device)
@@ -312,7 +359,7 @@ class FaceGeoPipeline:
                     corrected_v, delta_v = res_net(v_in, id_feat)
                     neutral_vertices = corrected_v.squeeze(0).cpu().numpy()
             except Exception as e:
-                print(f"[Stage 1.5 Warning] Residual correction skipped: {e}")
+                print(f"[Stage 1.5 Warning] Neural residual correction skipped: {e}")
 
         expression_metadata = {
             'expression_psi': expression_psi.tolist(),
@@ -405,8 +452,8 @@ class FaceGeoPipeline:
             micro_disp_mm=disp_micro if disp_micro is not None else np.zeros((detail_res, detail_res), dtype=np.float32),
             zone_masks=zone_masks,
             macro_disp_mm=disp_macro,
-            weight_meso=float(stage3_cfg.get('weight_meso', 1.0)),
-            weight_micro=float(stage3_cfg.get('weight_micro', 1.0)),
+            weight_meso=float(stage3_cfg.get('weight_meso', 0.5)),
+            weight_micro=float(stage3_cfg.get('weight_micro', 0.35)),
             weight_macro=float(stage3_cfg.get('weight_macro', 1.0)),
         )
         saved_detail_maps = fusion.save_maps(coupled_pbr, output_dir=output_dir, prefix="film")
@@ -539,6 +586,10 @@ class FaceGeoPipeline:
                 render_res = execute_film_render(render_args)
                 output_paths['film_render'] = str(render_res['rendered_image'])
                 output_paths['blend_file'] = str(render_res['blend_file'])
+                if render_res.get('hero_image'):
+                    output_paths['film_render_hero45'] = str(render_res['hero_image'])
+                if render_res.get('macro_image'):
+                    output_paths['film_render_macro_eye'] = str(render_res['macro_image'])
                 print(f"[Film Look-Dev] Look-dev turnaround and studio scene ready.")
             except Exception as e:
                 print(f"[Film Look-Dev Warning] Blender Cycles rendering skipped: {e}")
@@ -642,6 +693,7 @@ class FaceGeoPipeline:
                 stage8_cfg = self.cfg.get('stage8', {}) if isinstance(self.cfg, dict) else {}
                 tex_res = int(stage8_cfg.get('resolution', self.cfg.get('stage6', {}).get('texture_resolution', 2048) if isinstance(self.cfg, dict) else 2048))
 
+                proj_rgb = projection_result.get('projected_rgb') if projection_result is not None else None
                 pbr_result = stage8.generate(
                     vertices=vertices,
                     faces=faces,
@@ -651,6 +703,7 @@ class FaceGeoPipeline:
                     flame_faces=faces,
                     displacement_map=disp_map,
                     resolution=tex_res,
+                    projected_rgb=proj_rgb,
                 )
                 pbr_paths = stage8.save_maps(pbr_result, output_dir)
                 texture_maps.update(pbr_paths)
@@ -743,6 +796,7 @@ class FaceGeoPipeline:
         with open(manifest_path, 'w') as f:
             json.dump(manifest, f, indent=2)
 
+        mh_info = stage5_manifest.get('metahuman_bridge', {}) or {}
         res_dict = {
             'obj_path': str(obj_path),
             'manifest_path': str(manifest_path),
@@ -750,6 +804,8 @@ class FaceGeoPipeline:
             'blendshapes_path': stage5_manifest.get('blendshapes_json'),
             'armature_path': stage5_manifest.get('armature_json'),
             'fbx_path': stage5_manifest.get('fbx_file'),
+            'metahuman_obj': mh_info.get('obj_path'),
+            'metahuman_manifest': mh_info.get('manifest_path'),
         }
         if detail_maps:
             res_dict.update(detail_maps)

@@ -123,6 +123,45 @@ class TestStage15Residual(unittest.TestCase):
             self.assertGreater(len(train_subjs), 0)
             self.assertGreater(len(val_subjs), 0)
 
+    @unittest.skipIf(torch is None, "PyTorch required for contour deformer tests")
+    def test_contour_deformer_collar_pinning_contract(self):
+        """CRITICAL: Verify NonLinearContourDeformer satisfies Rule 4 Collar Seam Contract."""
+        flame_pkl = Path('data/flame_model/generic_model.pkl')
+        if not flame_pkl.exists():
+            self.skipTest("FLAME generic_model.pkl not found")
+
+        from src.utils.flame_model import FLAMEModel
+        from src.stage1_5_residual.contour_deformer import NonLinearContourDeformer
+        from src.stage0_preprocess.detector import FaceDetection
+
+        flame = FLAMEModel(str(flame_pkl))
+        verts, faces = flame.decode_neutral(np.zeros(300))
+
+        deformer = NonLinearContourDeformer(flame_model=flame, n_iterations=10)
+
+        # Create dummy detection with 68 landmarks
+        lm_68 = np.ones((68, 3), dtype=np.float32) * 500.0
+        det = FaceDetection(
+            bbox=np.array([100, 100, 900, 900], dtype=np.float32),
+            landmarks_5pt=np.array([[400, 420], [624, 420], [512, 530], [430, 680], [594, 680]], dtype=np.float32),
+            det_score=0.99,
+            yaw_deg=0.0,
+            crop_112=np.zeros((112, 112, 3), dtype=np.uint8),
+            landmark_3d_68=lm_68,
+        )
+
+        deformed_v, delta_v = deformer.deform(verts, [det], [(1024, 1024)])
+
+        # Check collar region: lowest 20% along Y
+        y_min, y_max = verts[:, 1].min(), verts[:, 1].max()
+        y_norm = (verts[:, 1] - y_min) / (y_max - y_min + 1e-8)
+        collar_idx = np.where(y_norm <= 0.20)[0]
+
+        max_collar_disp = np.max(np.abs(delta_v[collar_idx]))
+        self.assertEqual(max_collar_disp, 0.0, "Rule 4 violation: collar displacement must be strictly 0.0")
+        self.assertEqual(deformed_v.shape, (N_VERTS, 3))
+
 
 if __name__ == '__main__':
     unittest.main()
+

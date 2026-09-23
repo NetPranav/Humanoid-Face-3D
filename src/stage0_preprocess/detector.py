@@ -14,6 +14,8 @@ class FaceDetection:
     embedding: Optional[np.ndarray] = None  # (512,) ArcFace normalized feature embedding
     pitch_deg: float = 0.0    # Head pitch angle in degrees
     roll_deg: float = 0.0     # Head roll angle in degrees
+    landmark_3d_68: Optional[np.ndarray] = None  # (68, 3) 3D facial landmarks
+    landmark_2d_106: Optional[np.ndarray] = None # (106, 2) dense 2D facial contour landmarks
 
     @property
     def landmarks_5(self) -> np.ndarray:
@@ -109,6 +111,9 @@ class FaceDetector:
             yaw = float(pose[1]) if pose is not None and len(pose) >= 2 else 0.0
             roll = float(pose[2]) if pose is not None and len(pose) >= 3 else 0.0
 
+            lm_3d = getattr(face, 'landmark_3d_68', None)
+            lm_2d = getattr(face, 'landmark_2d_106', None)
+
             det = FaceDetection(
                 bbox=face.bbox,
                 landmarks_5pt=face.kps,
@@ -119,6 +124,8 @@ class FaceDetector:
                 embedding=emb,
                 pitch_deg=pitch,
                 roll_deg=roll,
+                landmark_3d_68=lm_3d,
+                landmark_2d_106=lm_2d,
             )
             results.append(det)
         return results

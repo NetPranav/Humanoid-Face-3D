@@ -56,8 +56,8 @@ class MultiTierDetailFusion:
         micro_disp_mm: np.ndarray,
         macro_disp_mm: Optional[np.ndarray] = None,
         weight_macro: float = 1.0,
-        weight_meso: float = 1.0,
-        weight_micro: float = 1.0,
+        weight_meso: float = 0.5,
+        weight_micro: float = 0.35,
         mask: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """
@@ -96,8 +96,14 @@ class MultiTierDetailFusion:
             m = _match_res(mask)
             total = total * (m > 0.1).astype(np.float32)
 
-        # Enforce Rule 4 Neck Seam Contract Invariant (bitwise boundary pinning)
+        # Enforce Rule 4 Neck Seam Contract Invariant (smooth Hermite taper + bitwise boundary pinning)
+        transition_start = int(0.70 * h)
         bottom_start = int(0.85 * h)
+        ramp_len = max(bottom_start - transition_start, 1)
+        row_indices = np.arange(h, dtype=np.float32)[:, None]
+        t = np.clip((bottom_start - row_indices) / float(ramp_len), 0.0, 1.0)
+        smooth_falloff = t * t * (3.0 - 2.0 * t)
+        total = total * smooth_falloff
         total[bottom_start:, :] = 0.0
 
         # Clip strictly to metric bounds
@@ -188,18 +194,19 @@ class MultiTierDetailFusion:
         self,
         zone_masks: Dict[str, np.ndarray],
         micro_disp_mm: Optional[np.ndarray] = None,
-        base_t_zone: float = 0.32,
-        base_cheeks: float = 0.58,
-        base_lips: float = 0.22,
-        base_periorbital: float = 0.45,
-        base_default: float = 0.50,
-        coat_sheen_t_zone: float = 0.18,
+        base_t_zone: float = 0.52,
+        base_cheeks: float = 0.65,
+        base_lips: float = 0.26,
+        base_periorbital: float = 0.55,
+        base_default: float = 0.60,
+        coat_sheen_t_zone: float = 0.20,
     ) -> Dict[str, np.ndarray]:
         """
         Generates dual-lobe specular roughness maps:
-        1. Base Roughness: Matte lipid barrier of the stratum corneum (0.45 - 0.60)
-        2. Coat / Micro-Roughness: Sharp glossy specular sheen from sebum oil (0.15 - 0.25)
+        1. Base Roughness: Matte lipid barrier of the stratum corneum (0.50 - 0.68)
+        2. Coat / Micro-Roughness: Sharp glossy specular sheen from sebum oil (0.18 - 0.24)
            concentrated in the T-zone and eyelid margins.
+        3. Coat Weight: Localized sebum layer strength (0.35 on T-zone, 0.0 on cheeks/neck).
         """
         h, w = self.resolution, self.resolution
 
@@ -229,11 +236,14 @@ class MultiTierDetailFusion:
 
         # --- 2. Coat Sheen Layer (Sebum Oil) ---
         # Sharp micro-sheen on T-zone and eyelids
-        coat_rough = np.full((h, w), 0.40, dtype=np.float32)
+        coat_rough = np.full((h, w), 0.38, dtype=np.float32)
         coat_rough = coat_rough * (1.0 - m_tzone) + coat_sheen_t_zone * m_tzone
         coat_rough = coat_rough * (1.0 - m_periorbital) + 0.25 * m_periorbital
 
-        # --- 3. Displacement-Coupled Micro-Roughness Variation ---
+        # --- 3. Coat Weight (Strength of Sebum Oil Layer) ---
+        coat_weight = np.clip(m_tzone * 0.40 + m_periorbital * 0.20, 0.0, 1.0)
+
+        # --- 4. Displacement-Coupled Micro-Roughness Variation ---
         if micro_disp_mm is not None:
             m_disp = micro_disp_mm
             if m_disp.shape[:2] != (h, w):
@@ -245,10 +255,12 @@ class MultiTierDetailFusion:
 
         base_rough = np.clip(base_rough, 0.0, 1.0) * valid
         coat_rough = np.clip(coat_rough, 0.0, 1.0) * valid
+        coat_weight = np.clip(coat_weight, 0.0, 1.0) * valid
 
         return {
             'base_roughness': base_rough.astype(np.float32),
             'coat_roughness': coat_rough.astype(np.float32),
+            'coat_weight': coat_weight.astype(np.float32),
         }
 
     # -----------------------------------------------------------------------
@@ -261,8 +273,8 @@ class MultiTierDetailFusion:
         micro_disp_mm: np.ndarray,
         zone_masks: Dict[str, np.ndarray],
         macro_disp_mm: Optional[np.ndarray] = None,
-        weight_meso: float = 1.0,
-        weight_micro: float = 1.0,
+        weight_meso: float = 0.5,
+        weight_micro: float = 0.35,
         weight_macro: float = 1.0,
     ) -> Dict[str, np.ndarray]:
         """
@@ -289,14 +301,19 @@ class MultiTierDetailFusion:
             weight_micro=weight_micro,
             mask=valid,
         )
-        # Enforce Rule 4 Neck Seam Contract Invariant
-        neck_collar = zone_masks.get('neck_collar')
-        if neck_collar is not None:
-            comp_disp[neck_collar > 0.1] = 0.0
-        neck_pinning = zone_masks.get('neck_pinning')
+        # Enforce Rule 4 Neck Seam Contract Invariant (smooth Hermite taper + bitwise boundary pinning)
+        transition_start = int(0.70 * self.resolution)
+        bottom_start = int(0.85 * self.resolution)
+        ramp_len = max(bottom_start - transition_start, 1)
+        row_indices = np.arange(self.resolution, dtype=np.float32)[:, None]
+        t = np.clip((bottom_start - row_indices) / float(ramp_len), 0.0, 1.0)
+        smooth_falloff = t * t * (3.0 - 2.0 * t)
+        comp_disp = comp_disp * smooth_falloff
+
+        neck_pinning = zone_masks.get('neck_pinning', zone_masks.get('neck_collar'))
         if neck_pinning is not None:
-            comp_disp[neck_pinning > 0.1] = 0.0
-        comp_disp[int(0.85 * self.resolution):, :] = 0.0
+            comp_disp = comp_disp * (1.0 - np.clip(neck_pinning, 0.0, 1.0))
+        comp_disp[bottom_start:, :] = 0.0
 
         # 2. Tangent normal map
         normals_rgb = self.compute_tangent_normal_map(comp_disp)
@@ -316,6 +333,7 @@ class MultiTierDetailFusion:
             'cavity_ao_map': cavity_ao,
             'base_roughness': roughness_dict['base_roughness'],
             'coat_roughness': roughness_dict['coat_roughness'],
+            'coat_weight': roughness_dict.get('coat_weight', np.zeros_like(comp_disp)),
         }
 
     # -----------------------------------------------------------------------
@@ -339,6 +357,7 @@ class MultiTierDetailFusion:
         cavity_ao = coupled_result['cavity_ao_map']
         base_rough = coupled_result['base_roughness']
         coat_rough = coupled_result['coat_roughness']
+        coat_weight = coupled_result.get('coat_weight', np.zeros_like(base_rough))
 
         # 16-bit uint displacement PNG (scale: self.max_scale_mm)
         norm_disp = np.clip((disp_mm / self.max_scale_mm + 1.0) * 0.5, 0.0, 1.0)
@@ -349,12 +368,14 @@ class MultiTierDetailFusion:
         cavity_p = out_dir / f"{prefix}_cavity_ao.png"
         rough_base_p = out_dir / f"{prefix}_roughness_base.png"
         rough_coat_p = out_dir / f"{prefix}_roughness_coat.png"
+        coat_weight_p = out_dir / f"{prefix}_coat_weight.png"
 
         cv2.imwrite(str(disp_p), disp_u16)
         cv2.imwrite(str(normal_p), cv2.cvtColor(normals_rgb, cv2.COLOR_RGB2BGR))
         cv2.imwrite(str(cavity_p), np.round(cavity_ao * 255.0).astype(np.uint8))
         cv2.imwrite(str(rough_base_p), np.round(base_rough * 255.0).astype(np.uint8))
         cv2.imwrite(str(rough_coat_p), np.round(coat_rough * 255.0).astype(np.uint8))
+        cv2.imwrite(str(coat_weight_p), np.round(coat_weight * 255.0).astype(np.uint8))
 
         return {
             'displacement_png': disp_p,
@@ -362,4 +383,5 @@ class MultiTierDetailFusion:
             'cavity_ao_png': cavity_p,
             'roughness_base_png': rough_base_p,
             'roughness_coat_png': rough_coat_p,
+            'coat_weight_png': coat_weight_p,
         }

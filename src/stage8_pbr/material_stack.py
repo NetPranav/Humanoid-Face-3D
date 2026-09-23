@@ -104,7 +104,7 @@ def _build_anatomical_zone_masks(
     masks = {}
 
     # T-zone: forehead + nose bridge + chin tip (oily skin)
-    forehead = (y_n > 0.62) & (np.abs(x_n - 0.5) < 0.20) & (z_n > 0.55) & (valid_map > 0)
+    forehead = (y_n > 0.62) & (y_n < 0.78) & (np.abs(x_n - 0.5) < 0.20) & (z_n > 0.55) & (valid_map > 0)
     nose = (y_n > 0.38) & (y_n < 0.58) & (np.abs(x_n - 0.5) < 0.08) & (z_n > 0.70) & (valid_map > 0)
     chin_tip = (y_n > 0.22) & (y_n < 0.32) & (np.abs(x_n - 0.5) < 0.10) & (z_n > 0.60) & (valid_map > 0)
     masks['t_zone'] = (forehead | nose | chin_tip).astype(np.float32)
@@ -143,7 +143,66 @@ def _build_anatomical_zone_masks(
     # Full face valid mask
     masks['valid'] = valid_map
 
+    # Smooth anatomical transitions with Gaussian feathering
+    feather_sigma = max(1.0, float(resolution) * 0.015)
+    for k in ['t_zone', 'cheeks', 'lips', 'periorbital', 'ears']:
+        if k in masks:
+            masks[k] = np.clip(cv2.GaussianBlur(masks[k], (0, 0), feather_sigma), 0.0, 1.0) * valid_map
+
     return masks
+
+
+def extract_photo_oiliness_profile(
+    projected_rgb: Optional[np.ndarray],
+    zone_masks: Dict[str, np.ndarray],
+) -> Dict[str, float]:
+    """
+    Measures specular highlight intensity, desaturation, and gloss contrast
+    from the raw projected photograph before delighting removes it.
+
+    Returns per-zone roughness adjustments.
+    """
+    if projected_rgb is None:
+        return {'t_zone_delta': 0.0, 'cheeks_delta': 0.0, 'oiliness_index': 0.0}
+
+    rgb = projected_rgb.astype(np.float32)
+    if rgb.max() > 1.0:
+        rgb = rgb / 255.0
+
+    # Luminance (Rec.709)
+    lum = 0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]
+
+    # Saturation (HSV approximation)
+    max_c = np.max(rgb, axis=2)
+    min_c = np.min(rgb, axis=2)
+    denom = max_c + 1e-6
+    sat = (max_c - min_c) / denom
+
+    t_mask = zone_masks.get('t_zone', np.zeros_like(lum)) > 0.5
+    c_mask = zone_masks.get('cheeks', np.zeros_like(lum)) > 0.5
+
+    if np.sum(t_mask) < 50 or np.sum(c_mask) < 50:
+        return {'t_zone_delta': 0.0, 'cheeks_delta': 0.0, 'oiliness_index': 0.0}
+
+    # Specular metric: high luminance with desaturation corresponds to specular sheen
+    specular_map = lum * (1.0 - sat)
+
+    t_spec_p95 = np.percentile(specular_map[t_mask], 95)
+    c_spec_p95 = np.percentile(specular_map[c_mask], 95)
+
+    contrast = t_spec_p95 - c_spec_p95
+    oiliness_index = float(np.clip((contrast - 0.08) / 0.15, -1.0, 1.0))
+
+    t_zone_delta = -0.10 * oiliness_index
+    cheeks_delta = -0.05 * oiliness_index
+
+    return {
+        't_zone_delta': t_zone_delta,
+        'cheeks_delta': cheeks_delta,
+        'oiliness_index': oiliness_index,
+        't_spec_p95': float(t_spec_p95),
+        'c_spec_p95': float(c_spec_p95),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -153,10 +212,10 @@ def _build_anatomical_zone_masks(
 class RoughnessMapGenerator:
     """
     Generates per-texel roughness from anatomical zone classification
-    with displacement-correlated micro-variation.
+    with photo-derived specular modulation and displacement-correlated micro-variation.
 
     Roughness values (GGX metallic roughness model):
-    - T-zone (forehead, nose, chin): 0.28–0.38 (oily, smooth)
+    - T-zone (forehead, nose, chin): 0.20–0.40 (modulated by photo oiliness)
     - Cheeks: 0.50–0.65 (drier)
     - Lips: 0.18–0.25 (glossy)
     - Periorbital: 0.42–0.52 (thin, delicate)
@@ -165,11 +224,11 @@ class RoughnessMapGenerator:
 
     def __init__(
         self,
-        r_t_zone: float = 0.33,
-        r_cheeks: float = 0.57,
-        r_lips: float = 0.22,
-        r_periorbital: float = 0.47,
-        r_default: float = 0.45,
+        r_t_zone: float = 0.52,
+        r_cheeks: float = 0.65,
+        r_lips: float = 0.26,
+        r_periorbital: float = 0.55,
+        r_default: float = 0.60,
         displacement_variation: float = 0.08,
     ):
         self.r_t_zone = r_t_zone
@@ -183,6 +242,7 @@ class RoughnessMapGenerator:
         self,
         zone_masks: Dict[str, np.ndarray],
         displacement_map: Optional[np.ndarray] = None,
+        projected_rgb: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """
         Generate roughness map.
@@ -191,6 +251,7 @@ class RoughnessMapGenerator:
         ----------
         zone_masks : dict of (H, W) float32 masks from _build_anatomical_zone_masks
         displacement_map : (H, W) float32 displacement in mm (optional)
+        projected_rgb : (H, W, 3) float32 or uint8 raw projected photo (optional)
 
         Returns
         -------
@@ -199,14 +260,23 @@ class RoughnessMapGenerator:
         valid = zone_masks.get('valid', np.ones_like(zone_masks.get('t_zone', np.zeros((1, 1)))))
         h, w = valid.shape
 
+        # Photo-derived oiliness modulation
+        oil_profile = extract_photo_oiliness_profile(projected_rgb, zone_masks)
+        r_t_active = float(np.clip(self.r_t_zone + oil_profile['t_zone_delta'], 0.40, 0.65))
+        r_c_active = float(np.clip(self.r_cheeks + oil_profile['cheeks_delta'], 0.55, 0.75))
+
+        if oil_profile['oiliness_index'] != 0.0:
+            print(f"  [Stage 8A] Photo-derived oiliness index: {oil_profile['oiliness_index']:+.2f} "
+                  f"(T-zone roughness: {r_t_active:.2f}, cheeks: {r_c_active:.2f})")
+
         roughness = np.full((h, w), self.r_default, dtype=np.float32)
 
         # Apply zone-specific values (with soft blending via mask weights)
         roughness = roughness * (1 - zone_masks.get('t_zone', np.zeros((h, w)))) + \
-                    self.r_t_zone * zone_masks.get('t_zone', np.zeros((h, w)))
+                    r_t_active * zone_masks.get('t_zone', np.zeros((h, w)))
 
         roughness = roughness * (1 - zone_masks.get('cheeks', np.zeros((h, w)))) + \
-                    self.r_cheeks * zone_masks.get('cheeks', np.zeros((h, w)))
+                    r_c_active * zone_masks.get('cheeks', np.zeros((h, w)))
 
         roughness = roughness * (1 - zone_masks.get('lips', np.zeros((h, w)))) + \
                     self.r_lips * zone_masks.get('lips', np.zeros((h, w)))
@@ -529,6 +599,7 @@ class PBRMaterialStack:
         flame_faces: np.ndarray,
         displacement_map: Optional[np.ndarray] = None,
         resolution: int = 2048,
+        projected_rgb: Optional[np.ndarray] = None,
     ) -> Dict[str, np.ndarray]:
         """
         Generate the complete PBR material stack.
@@ -547,8 +618,8 @@ class PBRMaterialStack:
         )
 
         # 8A: Roughness
-        print("[Stage 8A] Generating roughness map (anatomical zones + displacement variation)...")
-        roughness = self.roughness_gen.generate(zone_masks, displacement_map)
+        print("[Stage 8A] Generating roughness map (anatomical zones + photo-derived oiliness)...")
+        roughness = self.roughness_gen.generate(zone_masks, displacement_map, projected_rgb=projected_rgb)
 
         # 8B: Cavity / AO
         print("[Stage 8B] Generating cavity/ambient occlusion map...")

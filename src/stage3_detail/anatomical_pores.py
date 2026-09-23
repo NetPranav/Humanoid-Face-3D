@@ -264,7 +264,7 @@ class AnatomicalPoreSynthesizer:
         masks['valid'] = valid
 
         # T-zone: central column (forehead + nose + chin)
-        t_zone = ((np.abs(ug - 0.5) < 0.12) & (vg > 0.25) & (vg < 0.85) & (valid > 0)).astype(np.float32)
+        t_zone = ((np.abs(ug - 0.5) < 0.12) & (vg > 0.25) & (vg < 0.78) & (valid > 0)).astype(np.float32)
         masks['t_zone'] = cv2.GaussianBlur(t_zone, (0, 0), resolution * 0.015)
 
         # Cheeks: lateral to T-zone
@@ -279,7 +279,7 @@ class AnatomicalPoreSynthesizer:
         masks['lips'] = cv2.GaussianBlur(lips, (0, 0), resolution * 0.01)
 
         # Forehead: upper zone
-        forehead = ((np.abs(ug - 0.5) < 0.35) & (vg >= 0.65) & (vg < 0.85) & (valid > 0)).astype(np.float32)
+        forehead = ((np.abs(ug - 0.5) < 0.35) & (vg >= 0.65) & (vg < 0.78) & (valid > 0)).astype(np.float32)
         masks['forehead'] = cv2.GaussianBlur(forehead, (0, 0), resolution * 0.02)
 
         # Neck collar: bottom 20% (strictly pinned)
@@ -329,42 +329,43 @@ class AnatomicalPoreSynthesizer:
         m_neck_pinning = masks.get('neck_pinning', masks.get('neck_collar', np.zeros((res, res), dtype=np.float32)))
 
         # 2. Synthesize individual anatomical micro-octaves
-        # T-Zone / Nose: large sebaceous follicles (0.15 - 0.35 mm depth)
+        # T-Zone / Nose: fine sebaceous follicles (0.04 - 0.07 mm depth)
         t_pores = self.generate_follicular_pores(
             resolution=res,
-            grid_dim=res // 16,
-            pore_scale=3.5,
-            rim_weight=0.30,
+            grid_dim=res // 8,
+            pore_scale=4.5,
+            rim_weight=0.20,
             seed=self.seed + 1,
         )
-        d_tzone = t_pores * 0.28  # up to 0.28 mm depth
+        d_tzone = t_pores * 0.065  # ~65 microns realistic follicular depth
 
-        # Cheeks: fine elliptical pores & cellular micro-grain (0.05 - 0.12 mm)
+        # Cheeks: fine elliptical pores & cellular micro-grain (0.02 - 0.04 mm)
         cheek_grain = self.generate_anisotropic_micro_grain(
             resolution=res,
-            grid_dim=res // 12,
+            grid_dim=res // 7,
             stretch_factor=1.75,
             angle_deg=35.0,
             seed=self.seed + 2,
         )
-        d_cheeks = cheek_grain * 0.08  # ~0.08 mm depth
+        d_cheeks = cheek_grain * 0.035  # ~35 microns depth
 
-        # Lips: vertical dermal papillary ridges & micro-folds (0.10 - 0.25 mm)
+        # Lips: vertical dermal papillary ridges & micro-folds (0.06 - 0.10 mm)
         lip_ridges = self.generate_lip_striations(
             resolution=res,
             frequency_x=int(res * 0.16),
             frequency_y=int(res * 0.025),
             seed=self.seed + 3,
         )
-        d_lips = lip_ridges * 0.18  # ~0.18 mm amplitude
+        d_lips = lip_ridges * 0.08  # ~80 microns amplitude
 
-        # Forehead & general background micro-texture (0.05 - 0.15 mm)
-        bg_bands = self.generate_transverse_micro_bands(
-            resolution=res,
-            frequency_y=int(res * 0.07),
-            seed=self.seed + 4,
-        )
-        d_bg = bg_bands * 0.06
+        # Natural isotropic epidermal micro-grain (15-micron cellular skin grain, no sine scanlines)
+        rng = np.random.RandomState(self.seed + 4)
+        fine_noise = rng.normal(0.0, 1.0, (res, res)).astype(np.float32)
+        fine_grain = cv2.GaussianBlur(fine_noise, (0, 0), 1.0) - cv2.GaussianBlur(fine_noise, (0, 0), 2.5)
+        p99 = np.percentile(np.abs(fine_grain), 99.0)
+        if p99 > 1e-6:
+            fine_grain = fine_grain / p99
+        d_bg = fine_grain * 0.015  # subtle 15-micron natural skin grain
 
         # 3. Composite layers modulated by anatomical zone masks
         # Background skin cellular grain everywhere on face
@@ -376,8 +377,18 @@ class AnatomicalPoreSynthesizer:
         # Modulate Cheek directional pores
         total_disp = total_disp + (d_cheeks * m_cheeks)
 
-        # Modulate Lip vertical striations
-        total_disp = np.where(m_lips > 0.3, (total_disp * (1.0 - m_lips) + d_lips * m_lips), total_disp)
+        # Modulate Forehead subtle transverse tension lines (strictly on forehead zone)
+        m_forehead = masks.get('forehead', np.zeros((res, res), dtype=np.float32))
+        if np.any(m_forehead > 0.01):
+            bg_bands = self.generate_transverse_micro_bands(
+                resolution=res,
+                frequency_y=int(res * 0.05),
+                seed=self.seed + 5,
+            )
+            total_disp = total_disp + (bg_bands * 0.025 * m_forehead)
+
+        # Modulate Lip vertical striations with smooth continuous blend
+        total_disp = total_disp * (1.0 - m_lips) + (total_disp + d_lips) * m_lips
 
         # 4. Strictly Enforce Rule 4: Neck Collar Pinning Contract
         # Lowest 20% of vertices must have delta v strictly 0.000000 mm

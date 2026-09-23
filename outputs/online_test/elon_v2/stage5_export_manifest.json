@@ -1,0 +1,110 @@
+{
+  "status": "success",
+  "neutral_base_obj": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/head_mesh_neutral.obj",
+  "blendshapes_json": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/blendshapes_arkit52.json",
+  "armature_json": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/armature_rig.json",
+  "fbx_file": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/head_mesh_ue5_livelink.fbx",
+  "fbx_packaging": {
+    "status": "success",
+    "fbx_file": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/head_mesh_ue5_livelink.fbx",
+    "has_armature": true,
+    "has_blendshapes": true,
+    "has_hair_cards": false,
+    "render_preview": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/preview_render.png",
+    "blender_executable": "/opt/homebrew/bin/blender"
+  },
+  "lods": {
+    "LOD0": {
+      "mesh_obj": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/face_lod0.obj",
+      "blendshapes_json": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/blendshapes_lod0.json",
+      "num_vertices": 5023,
+      "num_triangles": 9976,
+      "shape_keys_count": 52
+    },
+    "LOD1": {
+      "mesh_obj": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/face_lod1.obj",
+      "blendshapes_json": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/blendshapes_lod1.json",
+      "num_vertices": 554,
+      "num_triangles": 1097,
+      "shape_keys_count": 52
+    },
+    "LOD2": {
+      "mesh_obj": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/face_lod2.obj",
+      "blendshapes_json": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/blendshapes_lod2.json",
+      "num_vertices": 554,
+      "num_triangles": 1097,
+      "shape_keys_count": 52
+    },
+    "LOD3": {
+      "mesh_obj": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/face_lod3.obj",
+      "blendshapes_json": "/Users/pranav/Project Folder/3d Model /outputs/online_test/elon_v2/blendshapes_lod3.json",
+      "num_vertices": 135,
+      "num_triangles": 257,
+      "shape_keys_count": 52
+    }
+  },
+  "subdivision": null,
+  "stylization": null,
+  "detail_maps": {
+    "projected_texture": "outputs/online_test/elon_v2/textures/head_projected_raw.png",
+    "projection_mask": "outputs/online_test/elon_v2/textures/head_projection_mask.png",
+    "albedo": "outputs/online_test/elon_v2/textures/head_albedo_diffuse.png",
+    "albedo_diffuse": "outputs/online_test/elon_v2/textures/head_albedo_diffuse.png",
+    "albedo_diffuse_png": "outputs/online_test/elon_v2/textures/head_albedo_diffuse.png",
+    "albedo_linear": "outputs/online_test/elon_v2/textures/head_albedo_linear.exr",
+    "roughness_map": "outputs/online_test/elon_v2/textures/head_roughness_map.png",
+    "cavity_ao_map": "outputs/online_test/elon_v2/textures/head_cavity_ao_map.png",
+    "sss_thickness_map": "outputs/online_test/elon_v2/textures/head_sss_thickness_map.png",
+    "sss_thickness": "outputs/online_test/elon_v2/textures/head_sss_thickness_map.png",
+    "cavity": "outputs/online_test/elon_v2/textures/head_cavity_ao_map.png",
+    "roughness": "outputs/online_test/elon_v2/textures/head_roughness_map.png",
+    "displacement_png": "outputs/online_test/elon_v2/film_displacement_16bit.png",
+    "normal_png": "outputs/online_test/elon_v2/film_normal.png",
+    "cavity_ao_png": "outputs/online_test/elon_v2/film_cavity_ao.png",
+    "roughness_base_png": "outputs/online_test/elon_v2/film_roughness_base.png",
+    "roughness_coat_png": "outputs/online_test/elon_v2/film_roughness_coat.png",
+    "coat_weight_png": "outputs/online_test/elon_v2/film_coat_weight.png",
+    "displacement_16bit": "outputs/online_test/elon_v2/film_displacement_16bit.png",
+    "normal_map": "outputs/online_test/elon_v2/film_normal.png",
+    "cavity_ao": "outputs/online_test/elon_v2/film_cavity_ao.png",
+    "roughness_base": "outputs/online_test/elon_v2/film_roughness_base.png",
+    "roughness_coat": "outputs/online_test/elon_v2/film_roughness_coat.png",
+    "sss_thickness_png": "outputs/online_test/elon_v2/textures/head_sss_thickness_map.png"
+  },
+  "facial_hair": {
+    "status": "success",
+    "is_clean_shaven": true,
+    "config": {
+      "mustache_density": 0.0,
+      "chin_density": 0.0,
+      "jawline_density": 0.0,
+      "sideburns_density": 0.0,
+      "eyebrows_density": 0.0,
+      "stubble_length_mm": 0.6,
+      "stubble_density": 0.8,
+      "generate_stubble": false,
+      "generate_cards": false,
+      "card_density": 120,
+      "card_length_mm": 2.5,
+      "card_width_mm": 0.5,
+      "card_curvature": 0.3,
+      "card_segments": 2,
+      "alpha_softness": 0.5
+    },
+    "stubble": {
+      "generated": false,
+      "max_stubble_relief_mm": 0.0,
+      "maps": {}
+    },
+    "hair_cards": {
+      "generated": false,
+      "num_cards": 0,
+      "num_vertices": 0,
+      "num_triangles": 0,
+      "files": {}
+    }
+  },
+  "num_vertices": 5023,
+  "num_triangles": 9976,
+  "arkit_blendshapes_count": 52
+}

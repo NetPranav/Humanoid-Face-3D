@@ -37,8 +37,8 @@ class FacialHairConfig:
     # Static hair card polygonal mesh parameters
     generate_cards: bool = False
     card_density: int = 120             # Approximate number of card quads to place
-    card_length_mm: float = 8.0         # Extrusion length of cards in mm [2.0, 25.0]
-    card_width_mm: float = 1.6          # Width of each card ribbon in mm [0.5, 4.0]
+    card_length_mm: float = 2.5         # Extrusion length of cards in mm [0.5, 6.0]
+    card_width_mm: float = 0.5          # Width of each card ribbon in mm [0.1, 1.2]
     card_curvature: float = 0.3         # Outward/downward bend factor [0.0, 1.0]
 
     # Material & Shader parameters
@@ -72,8 +72,8 @@ class FacialHairConfig:
             generate_stubble=bool(self.generate_stubble),
             generate_cards=bool(self.generate_cards),
             card_density=int(np.clip(self.card_density, 10, 1000)),
-            card_length_mm=float(np.clip(self.card_length_mm, 1.0, 30.0)),
-            card_width_mm=float(np.clip(self.card_width_mm, 0.3, 6.0)),
+            card_length_mm=float(np.clip(self.card_length_mm, 0.5, 6.0)),
+            card_width_mm=float(np.clip(self.card_width_mm, 0.1, 1.5)),
             card_curvature=float(np.clip(self.card_curvature, 0.0, 1.0)),
             card_segments=int(np.clip(self.card_segments, 1, 4)),
             alpha_softness=float(np.clip(self.alpha_softness, 0.1, 1.0)),
@@ -112,8 +112,8 @@ FACIAL_HAIR_PRESETS: Dict[str, FacialHairConfig] = {
         generate_stubble=True,
         generate_cards=True,
         card_density=80,
-        card_length_mm=4.5,
-        card_width_mm=1.2,
+        card_length_mm=2.2,
+        card_width_mm=0.40,
     ),
     "mustache": FacialHairConfig(
         mustache_density=1.0,
@@ -125,8 +125,8 @@ FACIAL_HAIR_PRESETS: Dict[str, FacialHairConfig] = {
         generate_stubble=True,
         generate_cards=True,
         card_density=60,
-        card_length_mm=7.0,
-        card_width_mm=1.5,
+        card_length_mm=3.2,
+        card_width_mm=0.55,
     ),
     "goatee": FacialHairConfig(
         mustache_density=0.85,
@@ -138,8 +138,8 @@ FACIAL_HAIR_PRESETS: Dict[str, FacialHairConfig] = {
         generate_stubble=True,
         generate_cards=True,
         card_density=100,
-        card_length_mm=9.5,
-        card_width_mm=1.6,
+        card_length_mm=3.5,
+        card_width_mm=0.60,
     ),
     "full_beard": FacialHairConfig(
         mustache_density=0.90,
@@ -151,8 +151,8 @@ FACIAL_HAIR_PRESETS: Dict[str, FacialHairConfig] = {
         generate_stubble=True,
         generate_cards=True,
         card_density=180,
-        card_length_mm=12.0,
-        card_width_mm=1.8,
+        card_length_mm=4.5,
+        card_width_mm=0.70,
     ),
     "eyebrows_only": FacialHairConfig(
         mustache_density=0.0,
@@ -163,8 +163,8 @@ FACIAL_HAIR_PRESETS: Dict[str, FacialHairConfig] = {
         generate_stubble=False,
         generate_cards=True,
         card_density=50,
-        card_length_mm=5.5,
-        card_width_mm=1.4,
+        card_length_mm=2.5,
+        card_width_mm=0.45,
     ),
 }
 

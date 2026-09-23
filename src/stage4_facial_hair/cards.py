@@ -122,6 +122,9 @@ class HairCardGenerator:
         # Geometry parameters scaled to match mesh units
         card_len = cfg.card_length_mm * unit_scale
         card_w = cfg.card_width_mm * unit_scale
+        # Physical safety clamp: cards should never exceed 5mm length or 1mm width
+        card_len = min(card_len, 5.0 * unit_scale)
+        card_w = min(card_w, 1.0 * unit_scale)
         curvature = cfg.card_curvature
 
         vertex_offset = 0

@@ -328,6 +328,19 @@ class TestStage5ExporterMaster(unittest.TestCase):
             self.assertEqual(manifest['subdivision']['levels'], 1)
             self.assertTrue(Path(manifest['subdivision']['obj_path']).exists())
 
+    def test_metahuman_bridge_export(self):
+        from src.stage5_export.metahuman_bridge import MetaHumanBridgeExporter
+        bridge = MetaHumanBridgeExporter(flame_faces=self.faces, n_verts=len(self.verts))
+        res = bridge.export(self.verts, self.temp_dir.name)
+        self.assertTrue(Path(res['obj_path']).exists())
+        self.assertTrue(Path(res['manifest_path']).exists())
+        self.assertTrue(Path(res['ue5_script_path']).exists())
+        with open(res['manifest_path']) as f:
+            manifest = json.load(f)
+        self.assertEqual(manifest['unit'], 'centimeters')
+        self.assertGreater(len(manifest['landmarks_3d_cm']), 10)
+
 
 if __name__ == '__main__':
     unittest.main()
+

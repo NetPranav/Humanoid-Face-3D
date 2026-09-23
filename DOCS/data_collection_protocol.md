@@ -46,16 +46,24 @@ To ensure zero perspective distortion and deep focal depth across the entire hea
 
 ---
 
-## 3. Illumination & Cross-Polarization Setup
+## 3. Illumination, Soft Diffuse Lighting & Cross-Polarization Setup
 
 Skin exhibits both **diffuse reflection** (subsurface scattering and skin pigmentation) and **specular reflection** (surface oil and moisture glare). Uncontrolled specular highlights cause false depressions or artifacts in 3D reconstruction.
 
+### Mandatory Lighting Protocol:
+1. **Soft Diffuse Lighting Mandate:**
+   - Illumination **MUST** be soft, even, and wrap-around (double-diffused softboxes $\ge 90\text{cm}$, large beauty dishes with diffusion socks, or indirect overcast ambient bounce).
+   - **Strictly Prohibited:** Direct on-camera flash, harsh single-point spotlighting, or un-diffused smartphone LED torches. Direct harsh point lights cast hard, razor-sharp shadow edges across the nasolabial sulcus and cheekbones that fool photometric Shape-from-Shading (SFS) and delighting networks into hallucinating false 3D gashes.
+2. **Physical Resolution Reality (Meso vs Micro):**
+   - Ordinary 3–5 portrait photo sets at 1.5m distance resolve macroscopic skin folds and meso-wrinkles ($0.5\text{ mm} - 2.0\text{ mm}$) with high fidelity.
+   - True cellular micro-pores ($0.05\text{ mm} - 0.15\text{ mm}$) are physically below the sensor Nyquist limit of standard portrait cameras and will appear as noise if brute-forced via photometric SFS. Micro-pores are generated plausibly through cellular Voronoi-Worley procedural shaders conditioned on photo-measured oiliness.
+
 ### Cross-Polarization Architecture:
 1. **Light Sources:** 3-point continuous daylight LEDs ($5600\text{K}$, $\text{CRI} \ge 96$):
-   - **Key Light:** 45° camera-left, elevated 30°.
-   - **Fill Light:** 45° camera-right, lower intensity (1:2 ratio).
+   - **Key Light:** 45° camera-left, elevated 30°, large diffused softbox.
+   - **Fill Light:** 45° camera-right, lower intensity (1:2 ratio), diffused.
    - **Rim/Hair Light:** Directly overhead/behind subject to separate subject from backdrop.
-2. **Polarizer Filters:**
+2. **Polarizer Filters (When Rig Available):**
    - Linear polarizing film mounted over all softboxes / LED panels in vertical polarization orientation.
    - Circular polarizer (CPL) mounted on each camera lens rotated to **$90^\circ$ cross-polarization (horizontal)** extinction.
    - **Result:** Pure specular glare cancellation; skin pores, wrinkles, and micro-structure are recorded with zero glare.

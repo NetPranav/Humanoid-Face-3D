@@ -36,10 +36,10 @@ class PhotometricDetailExtractor:
         self,
         uv_template_path: Optional[Union[str, Path]] = None,
         resolution: int = 1024,
-        max_wrinkle_depth_mm: float = 1.20,
-        sigma_fine: float = 1.5,
-        sigma_meso: float = 12.0,
-        gradient_gain: float = 2.5,
+        max_wrinkle_depth_mm: float = 0.35,
+        sigma_fine: float = 4.5,
+        sigma_meso: float = 30.0,
+        gradient_gain: float = 1.0,
     ):
         """
         Parameters
@@ -148,24 +148,31 @@ class PhotometricDetailExtractor:
         """
         h, w = grad_x.shape[:2]
 
-        # Frequency coordinates
-        u = np.fft.fftfreq(w).astype(np.float64)
-        v = np.fft.fftfreq(h).astype(np.float64)
+        # Mirror pad to eliminate Fourier boundary discontinuities / Gibbs ringing
+        pad_y = h // 4
+        pad_x = w // 4
+        gx_pad = cv2.copyMakeBorder(grad_x.astype(np.float64), pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT_101)
+        gy_pad = cv2.copyMakeBorder(grad_y.astype(np.float64), pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT_101)
+
+        ph, pw = gx_pad.shape
+        u = np.fft.fftfreq(pw).astype(np.float64)
+        v = np.fft.fftfreq(ph).astype(np.float64)
         u_grid, v_grid = np.meshgrid(u, v)
 
         denom = 4.0 * (np.pi ** 2) * (u_grid ** 2 + v_grid ** 2)
         denom[0, 0] = 1.0  # Avoid division by zero at DC frequency
 
-        # Fourier transform of gradients
-        gx_fft = np.fft.fft2(grad_x.astype(np.float64))
-        gy_fft = np.fft.fft2(grad_y.astype(np.float64))
+        # Fourier transform of padded gradients
+        gx_fft = np.fft.fft2(gx_pad)
+        gy_fft = np.fft.fft2(gy_pad)
 
         # Frankot-Chellappa integration formula:
         # Z(u,v) = (-i * 2*pi*u * P - i * 2*pi*v * Q) / (4*pi^2 * (u^2 + v^2))
         z_fft = (-1j * 2.0 * np.pi * u_grid * gx_fft - 1j * 2.0 * np.pi * v_grid * gy_fft) / denom
         z_fft[0, 0] = 0.0  # Zero DC frequency (zero-mean heightfield)
 
-        height = np.real(np.fft.ifft2(z_fft)).astype(np.float32)
+        height_pad = np.real(np.fft.ifft2(z_fft)).astype(np.float32)
+        height = height_pad[pad_y : pad_y + h, pad_x : pad_x + w]
 
         # Normalize heightfield to zero mean over valid mask
         if mask is not None and np.any(mask > 0.5):
@@ -358,12 +365,22 @@ class PhotometricDetailExtractor:
         # Compute tangent normal map
         normals = self.compute_tangent_normal_map(height)
 
+        # Objective Quality Gate: 2D FFT Spectral Anisotropy Check
+        try:
+            from src.utils.spectral_check import verify_displacement_spectral_quality
+            spectral_metrics = verify_displacement_spectral_quality(height, mask)
+            if not spectral_metrics.get('is_healthy', True):
+                print(f"  [Stage 3 Quality Alert] {spectral_metrics.get('warning')}")
+        except Exception:
+            spectral_metrics = {'is_healthy': True}
+
         return {
             'displacement_mm': height,
             'tangent_normal_rgb': normals,
             'wrinkle_mask': wrinkle_resp,
             'grad_x': gx,
             'grad_y': gy,
+            'spectral_metrics': spectral_metrics,
         }
 
     def extract_from_views(
@@ -422,12 +439,22 @@ class PhotometricDetailExtractor:
         height = self.apply_collar_pinning(height, vertices, faces)
         normals = self.compute_tangent_normal_map(height)
 
+        # Objective Quality Gate: 2D FFT Spectral Anisotropy Check
+        try:
+            from src.utils.spectral_check import verify_displacement_spectral_quality
+            spectral_metrics = verify_displacement_spectral_quality(height, accum_mask)
+            if not spectral_metrics.get('is_healthy', True):
+                print(f"  [Stage 3 Quality Alert] {spectral_metrics.get('warning')}")
+        except Exception:
+            spectral_metrics = {'is_healthy': True}
+
         return {
             'displacement_mm': height,
             'tangent_normal_rgb': normals,
             'wrinkle_mask': (accum_weights > 0.1).astype(np.float32),
             'grad_x': accum_gx,
             'grad_y': accum_gy,
+            'spectral_metrics': spectral_metrics,
         }
 
     # -----------------------------------------------------------------------

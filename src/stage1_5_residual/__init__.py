@@ -5,10 +5,13 @@ from src.stage1_5_residual.residual_net import (
     build_adjacency_from_faces,
     build_laplacian_matrix,
 )
+from src.stage1_5_residual.contour_deformer import NonLinearContourDeformer
 
 __all__ = [
     'MacroShapeResidualNetwork',
     'MacroShapeResidualNet',
+    'NonLinearContourDeformer',
     'build_adjacency_from_faces',
     'build_laplacian_matrix',
 ]
+

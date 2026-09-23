@@ -39,6 +39,7 @@ from src.stage5_export.stylize import (
 )
 from src.stage5_export.exporter import Stage5Exporter
 from src.stage5_export.fbx_packager import FBXPackager
+from src.stage5_export.metahuman_bridge import MetaHumanBridgeExporter
 
 __all__ = [
     "SparseMatrixCSR",
@@ -69,5 +70,6 @@ __all__ = [
     "FaceStylizer",
     "Stage5Exporter",
     "FBXPackager",
+    "MetaHumanBridgeExporter",
 ]
 
