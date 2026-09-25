@@ -3,6 +3,9 @@ torch>=2.1.0
 torchvision
 
 # Face Analysis & Embeddings
+# MediaPipe (Apache-2.0): landmarks + parsing. Pinned: 1.0.x crashes on macOS (Metal helper in the
+# face detector opens even with the CPU delegate); 0.10.35 works with numpy 2.
+mediapipe==0.10.35
 insightface
 onnxruntime-gpu
 
