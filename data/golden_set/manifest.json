@@ -1,0 +1,99 @@
+[
+ {
+  "subject": "chari",
+  "photos": [
+   "chari/photo_01.jpg"
+  ],
+  "source": "File:Raja Chari official portrait.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/2/2d/Raja_Chari_official_portrait.jpg",
+  "license": "Public domain",
+  "camera": "Hasselblad H6D-50c",
+  "focal_mm": "150/1"
+ },
+ {
+  "subject": "elon",
+  "photos": [
+   "elon/photo_01.jpg"
+  ],
+  "source": "data/online_test/elon.jpg (Gage Skidmore, CC BY-SA per Flickr/Commons - verify)",
+  "camera": "Canon EOS R5",
+  "focal_mm": "104"
+ },
+ {
+  "subject": "glover",
+  "photos": [
+   "glover/photo_01.jpg"
+  ],
+  "source": "File:Victor Glover official portrait 2020.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/a/aa/Victor_Glover_official_portrait_2020.jpg",
+  "license": "Public domain",
+  "camera": "Hasselblad H6D-50c",
+  "focal_mm": "120/1"
+ },
+ {
+  "subject": "haaland",
+  "photos": [
+   "haaland/photo_01.jpg"
+  ],
+  "source": "File:Secretary Deb Haaland, official headshot.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/7/7e/Secretary_Deb_Haaland%2C_official_headshot.jpg",
+  "license": "Public domain",
+  "camera": "NIKON D5",
+  "focal_mm": "1050/10"
+ },
+ {
+  "subject": "kim",
+  "photos": [
+   "kim/photo_01.jpg"
+  ],
+  "source": "File:Jonny Kim official portrait.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/1/10/Jonny_Kim_official_portrait.jpg",
+  "license": "Public domain",
+  "camera": "Hasselblad H6D-50c",
+  "focal_mm": "150/1"
+ },
+ {
+  "subject": "moghbeli",
+  "photos": [
+   "moghbeli/photo_01.jpg"
+  ],
+  "source": "File:Jasmin Moghbeli official portrait.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/d/dc/Jasmin_Moghbeli_official_portrait.jpg",
+  "license": "Public domain",
+  "camera": "Hasselblad H6D-50c",
+  "focal_mm": "150/1"
+ },
+ {
+  "subject": "obama",
+  "photos": [
+   "obama/photo_01.jpg"
+  ],
+  "source": "File:President Barack Obama.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/8/8d/President_Barack_Obama.jpg",
+  "license": "Public domain",
+  "camera": "Canon EOS 5D Mark III",
+  "focal_mm": "85/1"
+ },
+ {
+  "subject": "rubio",
+  "photos": [
+   "rubio/photo_01.jpg"
+  ],
+  "source": "File:Frank Rubio official portrait.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/e/e1/Frank_Rubio_official_portrait.jpg",
+  "license": "Public domain",
+  "camera": "Hasselblad H6D-50c",
+  "focal_mm": "150/1"
+ },
+ {
+  "subject": "watkins",
+  "photos": [
+   "watkins/photo_01.jpg"
+  ],
+  "source": "File:Jessica Watkins official portrait.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/8/81/Jessica_Watkins_official_portrait.jpg",
+  "license": "Public domain",
+  "camera": "Hasselblad H6D-50c",
+  "focal_mm": "150/1"
+ }
+]

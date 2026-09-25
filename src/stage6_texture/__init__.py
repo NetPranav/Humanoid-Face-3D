@@ -1,17 +1,7 @@
 """
-Stage 6: Multi-View UV Texture Projection.
-
-Backprojects input photos onto the 3D FLAME mesh UV space using
-per-view camera projection, angle-weighted cosine blending, and
-z-buffer visibility testing. Produces a raw projected texture map
-ready for delighting in Stage 7.
+Stage 6: per-texel UV texture backprojection onto the fitted (posed + expressed) mesh,
+with z-buffer occlusion and skin-parsing masks. See projector.py.
 """
-from src.stage6_texture.projector import (
-    MultiViewTextureProjector,
-    estimate_camera_projection_matrix,
-)
+from src.stage6_texture.projector import MultiViewTextureProjector, rasterize_uv
 
-__all__ = [
-    "MultiViewTextureProjector",
-    "estimate_camera_projection_matrix",
-]
+__all__ = ["MultiViewTextureProjector", "rasterize_uv"]

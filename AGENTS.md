@@ -9,13 +9,15 @@ This document guides any AI agent resuming or collaborating on the **Humanoid-Fa
 A production-grade, identity-preserving image-to-3D **fully textured, PBR-ready humanoid head mesh** reconstruction pipeline that synthesizes a film-grade 3D facial asset from 3–5 multi-view portraits, complete with physically based rendering material maps (albedo, roughness, SSS, cavity/AO, displacement, normal).
 
 ### Pipeline Stages:
-* **Stage 0 (Preprocessing):** InsightFace detection, 5-point alignment, pose estimation, and pre-flight identity/angular validation (`src/stage0_preprocess/`).
-* **Stage 1 (Identity Regression):** ArcFace feature extraction across views, frontality-weighted embedding fusion ($w_i = \text{det\_score}_i \cdot \cos^2(\text{yaw}_i)$), regressing 300-D FLAME shape coefficients $\beta$ (`src/stage1_identity/`).
-* **Stage 2 (Expression & Pose):** SMIRK regression of 100-D expression ($\psi$) and 15-D pose ($\theta$). **Invariant:** Base mesh is kept in canonical neutral pose ($\psi=0, \theta=0$); expressions are saved as metadata for blendshape targets (`src/stage2_expression/`).
-* **Stage 3 (Micro-Detail GAN):** U-Net Generator with InstanceNorm and MultiView cross-attention + PatchGAN Discriminator with SpectralNorm. Synthesizes 1024×1024 signed 16-bit displacement maps (`src/stage3_detail/`).
+> **Architecture v3 is the plan of record: read `DOCS/README.md` first.** Phase 0 of `DOCS/04_roadmap.md` is implemented; old design docs live in `older/`.
+
+* **Stage 0 (Preprocessing):** InsightFace detection + 68 landmarks, EXIF intrinsics (`camera.py`), MediaPipe skin parsing (`parsing.py`), validation (`src/stage0_preprocess/`).
+* **Stage 1 (Identity Regression):** MICA with **MICA's own ArcFace** (never InsightFace embeddings), frontality-weighted feature fusion, 300-D FLAME β (`src/stage1_identity/inference.py`). FLAME is rebuilt from the MICA checkpoint by `scripts/extract_flame_from_mica.py`.
+* **Stage 2 (Camera, Pose & Expression):** per-view landmark fit of camera, head pose, ψ and jaw with EXIF focal (`src/stage2_expression/landmark_fit.py`). **Invariant:** the exported base mesh stays neutral (ψ=0, θ=0); the fitted posed mesh is used only for texture projection.
+* **Stage 3 (Sculpt detail, Phase 4A):** `stage3.detail_level` 0–100 drives photo-derived wrinkle grooves (Hessian crease detection on the delit texture) + synthesized pores/micro-grooves/lip striations, 4K maps and a subdivided `head_mesh_detail.obj` (`src/stage3_detail/sculpt_detail.py`). The Multiface GAN and v1 luminance→height stay **off** (DOCS/01 R5).
 * **Stage 4 (Facial Hair):** Static facial hair geometry and micro-displacement (`src/stage4_facial_hair/`).
-* **Stage 6 (UV Texture Projection):** Multi-view backprojection of input photos onto FLAME UV space with angle-weighted cosine blending and z-buffer visibility testing. Pure math, no GPU (`src/stage6_texture/`).
-* **Stage 7 (AI Delighting + Inpainting):** Encoder-decoder U-Net strips environment lighting from projected textures → clean diffuse albedo. Procedural Gaussian dilation fills unseen UV regions. Supports pre-trained DECA albedo decoder weights (`src/stage7_delight/`).
+* **Stage 6 (UV Texture Projection):** per-texel backprojection onto the fitted posed mesh with a real z-buffer (`src/render/soft_raster.py`) and skin-only parsing masks (`src/stage6_texture/`).
+* **Stage 6/7 (Texture, Phase 3A):** fitted-SH delighting (`stage7.delight_strength`), mouth-interior exclusion, seam-free mesh-harmonic colour fill, lip-only lip fill, and the subject's own skin grain quilted into unseen areas; provenance map classes observed / mirrored / synthesized (`src/stage7_delight/`).
 * **Stage 8 (PBR Material Stack):** Procedural generation of roughness (anatomical zone-based), cavity/AO (displacement Laplacian), and SSS thickness (opposing-normal ray-march). Pure math, no GPU (`src/stage8_pbr/`).
 * **Stage 5 (Production Retopology & UE5 Rig):** Sparse barycentric correspondence matrix $W$, ARKit-52 blendshapes with neck boundary pinning ($\Delta v = 0$), 4-tier LOD decimation (LOD0 to LOD3), 5-joint skeletal armature, PBR material slot wiring, and headless Blender FBX packaging (`src/stage5_export/`).
 
@@ -38,9 +40,13 @@ A production-grade, identity-preserving image-to-3D **fully textured, PBR-ready 
 
 ---
 
+7. **Commercial use required (2026-09-25):**
+   Never train or ship on non-commercial data or models: FaceScape, FFHQ(-UV), NPHM, NeRSemble, Multiface, MetaHuman renders, InsightFace model weights, MICA, FLAME 2020. `DOCS/07_commercial_licensing.md` lists the allowed sources and the switch plan (FLAME 2023 Open, MediaPipe).
+
 ## 3. Key Repositories & Credentials
 
 * **GitHub Repository:** [https://github.com/NetPranav/Humanoid-Face-3D](https://github.com/NetPranav/Humanoid-Face-3D)
 * **Branch:** `main`
-* **Kaggle CLI Path:** `/Users/pranav/.local/bin/kaggle`
-* **Local Test Suite:** `python3 -m unittest discover tests` (102 tests passing).
+* **Kaggle CLI Path:** `/Users/pranav/.local/bin/kaggle`. Auth: `KAGGLE_API_TOKEN` in the gitignored `.env` (`set -a; . ./.env; set +a`). Never print or commit it.
+* **Local Test Suite:** `python3 -m unittest discover tests` (129 tests, 2 skipped when weights are absent).
+* **Quality gate:** `python3 scripts/run_golden_set.py --baseline outputs/golden_v1_baseline`. A change that lowers the golden-set identity score is a regression even if unit tests pass.

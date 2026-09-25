@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from src.stage1_5_residual.contour_deformer import load_flame_landmark_matrix
+from src.utils.flame_landmarks import load_flame_landmark_matrix
 
 
 # Canonical MetaHuman Identity Tracker Landmark Names mapped to 68-point index

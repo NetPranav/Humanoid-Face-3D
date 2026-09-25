@@ -1,79 +1,77 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# Face Geometry Reconstruction Pipeline — Default Configuration
+# Face Geometry Pipeline — Phase 0 configuration (DOCS/04_roadmap.md)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 pipeline:
-  stages: [0, 1, 2, 5]            # Active pipeline stages (Stage 3 & 4 enabled when checkpoints exist)
-  input_min_photos: 1             # Minimum photos required (supports single portrait to 5-view fusion)
-  input_max_photos: 5             # Maximum views fused in embedding space
+  input_min_photos: 1             # 1 portrait works; 3–5 views improve coverage
+  input_max_photos: 5
 
 stage0:
-  detector: insightface           # Buffalo_l ArcFace + RetinaFace detector
-  min_face_confidence: 0.5        # Minimum detection confidence required per photo
+  detector: insightface           # detection + 68 landmarks (buffalo_l)
+  min_face_confidence: 0.5
+  default_focal_35mm: 50.0        # focal prior only when the photo has no EXIF focal length
+  skin_erode_iod: 0.04            # erode the parsed skin mask by 4% of inter-ocular distance
 
 stage1:
-  model: mica
-  # FLAME Model Variant:
-  # - 'FLAME2020': MPI standard research model (non-commercial academic license, requires registration).
-  # - 'FLAME2023_open': Open-source / Apache 2.0 permissive weights variant.
+  model: mica                     # β from MICA using MICA's own ArcFace (Phase 0 fix R1)
   flame_version: FLAME2020
-  beta_dims: 300                  # Shape coefficient dimensionality
-  fusion: confidence_weighted     # Confidence + yaw angle softmax weighting
-  fusion_temperature: 0.05        # Softmax temperature: lower values prioritize highest quality frontal views
-  yaw_weight_exponent: 2          # Cosine exponent for yaw penalty: w_i = det_score_i * cos(yaw_i)^2
+  beta_dims: 300
+  fusion_temperature: 0.05
+  yaw_weight_exponent: 2
 
-stage2:
-  model: smirk                    # Permissively licensed expression & pose extractor
-  expression_dims: 100            # Expression coefficient dimensionality (psi)
-  neutral_output: true            # Base mesh always canonical neutral (psi=0, theta=neutral) for UE5 ARKit
+stage1_5:
+  enabled: false                  # v1 contour deformer: disabled (DOCS/01 R3); returns as Δ in Phase 1
+
+stage2:                           # replaces dead SMIRK wrapper + 5-point PnP (R2)
+  n_expr: 50                      # FLAME expression components fitted per view
+  iters: 400
+  fit_focal: true                 # refine EXIF focal within [0.5x, 2x]
 
 stage3:
-  resolution: 1024                # UV displacement map resolution (1024x1024 Ultra-Resolution)
-  in_channels: 6                  # Position (3) + Normal (3) maps rasterized from neutral mesh
-  out_channels: 1                 # Scalar displacement magnitude along surface normals
-  base_channels: 64
-  backbone_dim: 512
-  recon_lambda_start: 100.0       # L1 reconstruction loss weight at step 0
-  recon_lambda_end: 10.0          # L1 reconstruction loss weight after annealing
-  recon_anneal_steps: 50000       # Annealing steps for detail synthesis
-  r1_gamma: 10.0                  # R1 gradient penalty weight (evaluated in FP32 on T4)
-  ema_decay: 0.999                # Exponential moving average decay for generator weights
-  id_loss_lambda: 5.0             # Identity preservation loss weight
-  photo_loss_lambda: 1.0          # Photometric consistency loss weight
+  mode: sculpt                    # Phase 4A sculpt detail (the only mode; v1 GAN / meso / legacy pores removed)
+  detail_level: 75                # 0-100: 0 base mesh · 60+ visible wrinkles/pores in geometry · 100 studio-sculpt
+                                  #        (subdivision 1/2/3/4 at <25/<60/<90/>=90; level 4 = 1.3M vertices)
+  detail_resolution: 4096         # displacement / normal map resolution
+  resolution: 1024
+  max_scale_mm: 1.0               # displacement PNG encodes ±1 mm; written to manifest for renderers
+
+stage4:
+  enabled: true
 
 stage5:
-  topology: ict_facekit           # Production target topology (ICT-FaceKit, MIT license)
-  lod_triangle_counts: [24500, 5000, 2000, 500]  # LOD0 through LOD3 decimation targets
-  blendshape_standard: arkit52    # Apple ARKit-52 standard blendshape naming and semantics
-  export_format: fbx              # UE5 Live Link compatible skeletal mesh FBX
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PBR Texture Engine — Stages 6, 7, 8
-# ═══════════════════════════════════════════════════════════════════════════════
+  enabled: true
+  topology: flame                 # ICT-FaceKit retarget arrives in Phase 2
+  export_fbx: true
 
 stage6:
   enabled: true
-  texture_resolution: 2048         # Output texture resolution (1024 or 2048)
-  blend_gamma: 2.0                 # Cosine falloff sharpness for view blending
-  visibility_epsilon: 0.005        # Z-buffer depth epsilon for occlusion testing
+  texture_resolution: 2048
+  blend_gamma: 2.0
+  min_cos: 0.15                   # ignore grazing-angle texels
+  depth_tolerance_m: 0.0015       # z-buffer tolerance (thinner than an eyelid)
 
 stage7:
   enabled: true
-  delight_model: deca              # 'deca' (pre-trained) or 'custom' (fine-tuned)
-  delight_checkpoint: null         # Path to custom delighting checkpoint (null = auto-discover DECA)
-  inpaint_method: procedural       # 'procedural' (gaussian dilation) or 'lama' (neural)
-  inpaint_iterations: 50           # Dilation iterations for procedural inpainting
-  use_fp16: true                   # FP16 inference for VRAM savings
+  delight: true                   # Phase 3A: remove key-light shading (fitted SH lighting, tone-preserving)
+  delight_strength: 0.5           # 0..1. 1.0 removes the full fitted gradient but costs ~0.05 identity score
+                                  # against the (lit) photo on the golden set; 0.5 keeps identity within ~0.01
+  synthesize_skin: true           # Phase 3A: unseen areas get the subject's own skin grain
+  white_balance: false            # gray-edge colour-cast removal; unreliable on single photos (see projector.py)
 
 stage8:
   enabled: true
-  roughness_t_zone: 0.33           # Base roughness for oily T-zone
-  roughness_cheeks: 0.57           # Base roughness for dry cheeks
-  roughness_lips: 0.22             # Base roughness for glossy lips
-  cavity_strength: 0.35            # Laplacian cavity modulation strength
-  sss_ray_count: 32                # Rays per vertex for SSS thickness estimation
-  sss_normalize: true              # Normalize SSS to [0, 1] range
+  roughness_t_zone: 0.33
+  roughness_cheeks: 0.57
+  roughness_lips: 0.22
+  cavity_strength: 0.35
+  sss_ray_count: 32
+  sss_normalize: true
 
 evaluation:
-  arcface_threshold: 0.5          # Minimum cosine similarity for same-identity verification
-  now_benchmark: false            # Run NoW benchmark evaluation (MICA target: ~0.90mm median error)
+  enabled: true                   # overlays, turntables, report.json
+
+render:
+  enabled: false                  # Blender Cycles look-dev (slow on CPU); enable explicitly
+  samples: 128
+  width: 2048
+  height: 2048

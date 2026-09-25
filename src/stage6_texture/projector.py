@@ -1,554 +1,248 @@
 """
-Stage 6: Multi-View UV Texture Projection Engine.
+Stage 6: per-texel UV texture backprojection (Phase 0 rewrite, DOCS/01 R2 + R4).
 
-Projects input photographs onto the 3D FLAME mesh UV parameterisation using
-per-view weak-perspective camera matrices, angle-weighted cosine blending,
-and z-buffer-based visibility testing.
-
-All operations are pure NumPy/OpenCV — no GPU required (~200 MB RAM, ~2.5s).
+For each view:
+  1. The *posed and expressed* mesh from Stage 2 (camera coordinates, fitted intrinsics)
+     is rasterized into the photo to get a z-buffer. v1 projected onto the neutral mesh
+     with a 5-point, f = width camera and never ran its occlusion test.
+  2. Every UV texel is mapped to its 3D point on that mesh (UV-space rasterization with
+     face ids), projected into the photo, and kept only if
+       - it is the front-most surface at that pixel (z-buffer),
+       - it faces the camera (cos > min_cos), and
+       - the photo pixel is skin according to Stage 0 parsing (no hair, background, cloth).
+  3. Kept texels are sampled bilinearly from the full-resolution photo and blended across
+     views with weight cos^gamma.
+No photo enhancement (v1's eye CLAHE/unsharp) is applied.
 """
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Sequence, Union
 
 import cv2
 import numpy as np
 
-
-# ---------------------------------------------------------------------------
-# Camera projection estimation
-# ---------------------------------------------------------------------------
-
-CANONICAL_5_LANDMARKS = np.array([
-    [-0.0311,  0.0234,  0.0352],  # Right eye (InsightFace kps[0], viewer left)
-    [ 0.0320,  0.0225,  0.0348],  # Left eye  (InsightFace kps[1], viewer right)
-    [ 0.0005, -0.0056,  0.0732],  # Nose tip  (InsightFace kps[2])
-    [-0.0245, -0.0443,  0.0473],  # Right mouth corner (InsightFace kps[3])
-    [ 0.0238, -0.0443,  0.0473],  # Left mouth corner  (InsightFace kps[4])
-], dtype=np.float64)
+from src.render.soft_raster import RasterOut, rasterize
+from src.render.soft_renderer import project as project_points
+from src.render.soft_renderer import sample_bilinear, vertex_normals
 
 
-def extract_flame_5_landmarks(
-    vertices: np.ndarray,
-    faces: np.ndarray,
-    embedding_path: Optional[Union[str, Path]] = None,
-) -> np.ndarray:
+def sh_basis(n: np.ndarray) -> np.ndarray:
+    """2nd-order real spherical-harmonic basis (9 terms, constants folded into the fit)."""
+    x, y, z = n[:, 0], n[:, 1], n[:, 2]
+    return np.stack([np.ones_like(x), x, y, z, x * y, y * z, 3 * z * z - 1, x * z, x * x - y * y], 1)
+
+
+def srgb_to_linear(c: np.ndarray) -> np.ndarray:
+    c = np.clip(c / 255.0, 0, 1)
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def linear_to_srgb(c: np.ndarray) -> np.ndarray:
+    c = np.clip(c, 0, 1)
+    return 255.0 * np.where(c <= 0.0031308, c * 12.92, 1.055 * c ** (1 / 2.4) - 0.055)
+
+
+def fit_sh_shading(lin: np.ndarray, normals: np.ndarray, fit: np.ndarray, iters: int = 3,
+                   clamp=(0.6, 1.6)) -> Dict[str, np.ndarray]:
     """
-    Extracts the 5 canonical facial landmark 3D positions directly from the
-    subject's reconstructed 3D head mesh using the official FLAME landmark embedding.
+    First-order SH lighting on *luminance* from linear colours `lin` (N,3) and unit normals,
+    fitted on the `fit` subset with albedo treated as constant there (robust: the worst 15%
+    residuals are dropped each iteration, removing speculars, brows and moles).
+
+    One grey shading for all channels, so delighting never shifts hue (colour cast is handled
+    separately by white balance). Shading is normalized to median 1 on the fit set, so the
+    average skin tone is kept, and clamped: coarse FLAME normals cannot justify stronger
+    corrections (v1-style over-correction bleaches eye sockets and jaws).
     """
-    candidates = []
-    if embedding_path:
-        candidates.append(Path(embedding_path))
-    root = Path(__file__).resolve().parent.parent.parent
-    candidates.extend([
-        root / 'data' / 'flame_model' / 'landmark_embedding.npy',
-        root / 'vendor' / 'MICA' / 'data' / 'FLAME2020' / 'landmark_embedding.npy',
-        root / 'data' / 'FLAME2020' / 'landmark_embedding.npy',
-    ])
-
-    for cand in candidates:
-        if cand.exists():
-            try:
-                emb = np.load(cand, allow_pickle=True, encoding='latin1')
-                if hasattr(emb, 'item'):
-                    emb = emb.item()
-                elif isinstance(emb, np.ndarray) and emb.dtype == object:
-                    emb = emb[()]
-                lmk_faces = emb['full_lmk_faces_idx']
-                if lmk_faces.ndim > 1:
-                    lmk_faces = lmk_faces[0]
-                lmk_bary = emb['full_lmk_bary_coords']
-                if lmk_bary.ndim > 2:
-                    lmk_bary = lmk_bary[0]
-
-                if np.max(lmk_faces) < len(faces):
-                    lmk_3d_68 = np.zeros((68, 3), dtype=np.float64)
-                    for i in range(68):
-                        f_idx = lmk_faces[i]
-                        f = faces[f_idx]
-                        lmk_3d_68[i] = (
-                            lmk_bary[i, 0] * vertices[f[0]] +
-                            lmk_bary[i, 1] * vertices[f[1]] +
-                            lmk_bary[i, 2] * vertices[f[2]]
-                        )
-                    r_eye = np.mean(lmk_3d_68[36:42], axis=0)
-                    l_eye = np.mean(lmk_3d_68[42:48], axis=0)
-                    nose = lmk_3d_68[30]
-                    r_mouth = lmk_3d_68[48]
-                    l_mouth = lmk_3d_68[54]
-                    return np.array([r_eye, l_eye, nose, r_mouth, l_mouth], dtype=np.float64)
-            except Exception:
-                pass
-
-    return CANONICAL_5_LANDMARKS.copy()
+    Y = sh_basis(normals)[:, :4]
+    lum = lin @ np.array([0.2126, 0.7152, 0.0722])
+    idx = np.nonzero(fit)[0]
+    if len(idx) < 200:
+        raise ValueError(f"Only {len(idx)} texels available to fit lighting; need at least 200.")
+    sel = idx
+    for _ in range(iters):
+        L, *_ = np.linalg.lstsq(Y[sel], lum[sel], rcond=None)
+        r = np.abs(Y[sel] @ L - lum[sel])
+        sel = sel[r <= np.quantile(r, 0.85)]
+    L = L / np.median((Y @ L)[fit])                     # normalized: shading = Y4(n) @ L, median 1
+    shading = np.clip(Y @ L, clamp[0], clamp[1])
+    return {"shading": np.repeat(shading[:, None], 3, 1), "coeffs": np.asarray(L), "clamp": clamp}
 
 
-def estimate_camera_projection_matrix(
-    landmarks_5: np.ndarray,
-    yaw_deg: float,
-    pitch_deg: float,
-    roll_deg: float,
-    image_shape: Tuple[int, int],
-    mesh_3d_landmarks: Optional[np.ndarray] = None,
-) -> np.ndarray:
+def gray_edge_illuminant(photo_bgr: np.ndarray, sigma: float = 2.0, p: float = 6.0) -> np.ndarray:
     """
-    Converts Stage 0's 5-point landmarks + Euler angles into a weak-perspective
-    3×4 projection matrix P suitable for projecting FLAME 3D vertices (in metres)
-    into 2D image pixel coordinates.
-
-    Parameters
-    ----------
-    landmarks_5 : (5, 2)  — left eye, right eye, nose tip, left mouth, right mouth
-    yaw_deg, pitch_deg, roll_deg : Head pose Euler angles (degrees)
-    image_shape : (H, W) of the source photograph
-    mesh_3d_landmarks : (5, 3) optional subject-specific 3D landmark coordinates
-
-    Returns
-    -------
-    P : (3, 4) projection matrix   x_px = P @ [X, Y, Z, 1]^T
+    Illuminant colour (linear RGB, max-normalized) by the gray-edge hypothesis (van de Weijer,
+    Gevers & Gijsenij 2007): the Minkowski-p mean of image derivatives is achromatic.
     """
-    h, w = image_shape[:2]
-
-    # --- Canonical or Mesh-Derived 3D FLAME landmark positions (metres) ---
-    if mesh_3d_landmarks is not None and len(mesh_3d_landmarks) == 5:
-        canonical_3d = mesh_3d_landmarks.astype(np.float64)
-    else:
-        canonical_3d = CANONICAL_5_LANDMARKS.copy()
-
-    # --- Build rotation from Euler angles ---
-    yaw   = np.radians(yaw_deg)
-    pitch = np.radians(pitch_deg)
-    roll  = np.radians(roll_deg)
-
-    Ry = np.array([
-        [ np.cos(yaw),  0, np.sin(yaw)],
-        [ 0,            1, 0           ],
-        [-np.sin(yaw),  0, np.cos(yaw)],
-    ])
-    Rx = np.array([
-        [1, 0,             0            ],
-        [0, np.cos(pitch), -np.sin(pitch)],
-        [0, np.sin(pitch),  np.cos(pitch)],
-    ])
-    Rz = np.array([
-        [np.cos(roll), -np.sin(roll), 0],
-        [np.sin(roll),  np.cos(roll), 0],
-        [0,             0,            1],
-    ])
-    R = Rz @ Rx @ Ry   # extrinsic rotation (yaw-pitch-roll order)
-
-    # --- Solve weak-perspective via PnP (DLT) ---
-    # Use solvePnP for a stable solution
-    lm_2d = landmarks_5.astype(np.float64).reshape(5, 1, 2)
-    cam_matrix = np.array([
-        [w, 0, w / 2.0],
-        [0, w, h / 2.0],
-        [0, 0, 1.0    ],
-    ], dtype=np.float64)
-    dist_coeffs = np.zeros(4, dtype=np.float64)
-
-    success = False
-    try:
-        success, rvec, tvec = cv2.solvePnP(
-            canonical_3d, lm_2d, cam_matrix, dist_coeffs,
-            flags=cv2.SOLVEPNP_SQPNP
-        )
-        if not success:
-            success, rvec, tvec = cv2.solvePnP(
-                canonical_3d, lm_2d, cam_matrix, dist_coeffs,
-                flags=cv2.SOLVEPNP_EPNP
-            )
-    except Exception:
-        success = False
-
-    if not success:
-        # Fallback to weak-perspective from 2D/3D correspondence
-        return _fallback_weak_perspective(canonical_3d, landmarks_5, image_shape)
-
-    R_pnp, _ = cv2.Rodrigues(rvec)
-    T_pnp = tvec.reshape(3, 1)
-
-    # Build full 3×4 projection: P = K @ [R | t]
-    Rt = np.hstack([R_pnp, T_pnp])  # (3, 4)
-    P = cam_matrix @ Rt
-    return P.astype(np.float64)
+    s = 1024.0 / max(photo_bgr.shape[:2])
+    img = cv2.resize(photo_bgr, None, fx=s, fy=s, interpolation=cv2.INTER_AREA) if s < 1 else photo_bgr
+    lin = srgb_to_linear(img[..., ::-1].astype(np.float64))
+    lin = cv2.GaussianBlur(lin, (0, 0), sigma)
+    gx = cv2.Sobel(lin, cv2.CV_64F, 1, 0)
+    gy = cv2.Sobel(lin, cv2.CV_64F, 0, 1)
+    mag = np.sqrt(gx ** 2 + gy ** 2)
+    ok = (lin < 0.98).all(-1)                        # ignore clipped pixels
+    e = np.power(np.power(mag[ok], p).mean(0), 1.0 / p)
+    return e / e.max()
 
 
-def _fallback_weak_perspective(
-    pts_3d: np.ndarray,
-    pts_2d: np.ndarray,
-    image_shape: Tuple[int, int],
-) -> np.ndarray:
-    """Least-squares weak-perspective 3×4 matrix from 2D-3D pairs."""
-    n = len(pts_3d)
-    A = np.zeros((2 * n, 8), dtype=np.float64)
-    b = np.zeros(2 * n, dtype=np.float64)
-
-    for i in range(n):
-        X, Y, Z = pts_3d[i]
-        u, v = pts_2d[i]
-        A[2 * i]     = [X, Y, Z, 1, 0, 0, 0, 0]
-        A[2 * i + 1] = [0, 0, 0, 0, X, Y, Z, 1]
-        b[2 * i]     = u
-        b[2 * i + 1] = v
-
-    result, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
-    P = np.zeros((3, 4), dtype=np.float64)
-    P[0, :] = result[:4]
-    P[1, :] = result[4:]
-    P[2, :] = [0, 0, 0, 1]
-    return P
+def white_balance_gains(photo_bgr: np.ndarray, max_gain: float = 1.25) -> np.ndarray:
+    """Per-channel linear-RGB gains that neutralize the estimated illuminant (bounded)."""
+    e = gray_edge_illuminant(photo_bgr)
+    g = e.mean() / np.maximum(e, 1e-6)
+    return np.clip(g / g.mean(), 1.0 / max_gain, max_gain)
 
 
-# ---------------------------------------------------------------------------
-# Z-buffer visibility test
-# ---------------------------------------------------------------------------
+def rasterize_uv(uv_coords: np.ndarray, uv_faces: np.ndarray, resolution: int) -> RasterOut:
+    """UV-space raster: per-texel face id + barycentrics (texel centres, v up)."""
+    xy = np.stack([uv_coords[:, 0] * resolution, (1.0 - uv_coords[:, 1]) * resolution], 1)
+    return rasterize(xy, np.ones(len(uv_coords)), uv_faces, resolution, resolution)
 
-def _compute_visibility_mask(
-    vertices_3d: np.ndarray,
-    faces: np.ndarray,
-    P: np.ndarray,
-    image_shape: Tuple[int, int],
-    epsilon: float = 0.005,
-) -> np.ndarray:
-    """
-    Returns a boolean mask (N_vertices,) indicating which vertices are visible
-    from the camera defined by projection matrix P (i.e. not occluded).
-    """
-    h, w = image_shape[:2]
-    n_verts = len(vertices_3d)
-
-    # Project vertices to 2D using explicit coordinate dot products to prevent BLAS warnings
-    proj_x = vertices_3d[:, 0] * P[0, 0] + vertices_3d[:, 1] * P[0, 1] + vertices_3d[:, 2] * P[0, 2] + P[0, 3]
-    proj_y = vertices_3d[:, 0] * P[1, 0] + vertices_3d[:, 1] * P[1, 1] + vertices_3d[:, 2] * P[1, 2] + P[1, 3]
-    proj_z = vertices_3d[:, 0] * P[2, 0] + vertices_3d[:, 1] * P[2, 1] + vertices_3d[:, 2] * P[2, 2] + P[2, 3]
-
-    # Handle perspective division
-    z = proj_z.copy()
-    z[z == 0] = 1e-8
-    px = (proj_x / z).astype(np.float32)
-    py = (proj_y / z).astype(np.float32)
-
-    # Clip to image bounds
-    px_int = np.clip(np.round(px).astype(np.int32), 0, w - 1)
-    py_int = np.clip(np.round(py).astype(np.int32), 0, h - 1)
-
-    # Build depth buffer
-    depth_buffer = np.full((h, w), np.inf, dtype=np.float32)
-    for i in range(n_verts):
-        xi, yi = px_int[i], py_int[i]
-        if z[i] < depth_buffer[yi, xi]:
-            depth_buffer[yi, xi] = z[i]
-
-    # Mark visible vertices
-    visible = np.zeros(n_verts, dtype=bool)
-    for i in range(n_verts):
-        xi, yi = px_int[i], py_int[i]
-        if abs(z[i] - depth_buffer[yi, xi]) < epsilon:
-            visible[i] = True
-
-    return visible
-
-
-# ---------------------------------------------------------------------------
-# Multi-view texture projector
-# ---------------------------------------------------------------------------
 
 class MultiViewTextureProjector:
-    """
-    Projects multiple input photographs onto the 3D FLAME mesh UV space
-    using per-view projection matrices, visibility masks, and angle-weighted
-    cosine blending.
-
-    Parameters
-    ----------
-    texture_resolution : int
-        Output texture map resolution (e.g. 2048 for 2048×2048).
-    blend_gamma : float
-        Cosine falloff exponent for view blending (higher = sharper selection).
-    visibility_epsilon : float
-        Z-buffer depth epsilon for occlusion testing.
-    """
-
     def __init__(
         self,
         texture_resolution: int = 2048,
         blend_gamma: float = 2.0,
-        visibility_epsilon: float = 0.005,
+        min_cos: float = 0.15,
+        depth_tolerance_m: float = 0.004,
+        zbuffer_max_side: int = 2048,
     ):
-        self.resolution = texture_resolution
-        self.gamma = blend_gamma
-        self.vis_eps = visibility_epsilon
+        self.resolution = int(texture_resolution)
+        self.gamma = float(blend_gamma)
+        self.min_cos = float(min_cos)
+        self.depth_tol = float(depth_tolerance_m)
+        self.zbuffer_max_side = int(zbuffer_max_side)
+        self._uv_raster: Optional[RasterOut] = None
+        self._uv_key = None
+
+    def uv_raster(self, uv_coords: np.ndarray, uv_faces: np.ndarray) -> RasterOut:
+        key = (uv_coords.shape, uv_faces.shape, float(uv_coords.sum()), self.resolution)
+        if self._uv_raster is None or self._uv_key != key:
+            self._uv_raster = rasterize_uv(uv_coords, uv_faces, self.resolution)
+            self._uv_key = key
+        return self._uv_raster
 
     def project(
         self,
-        photos: List[np.ndarray],
-        detections: list,
-        vertices: np.ndarray,
+        photos: Sequence[np.ndarray],
+        vertices_cam: Sequence[np.ndarray],
+        intrinsics_K: Sequence[np.ndarray],
+        skin_masks: Sequence[np.ndarray],
         faces: np.ndarray,
-        vertex_normals: np.ndarray,
         uv_coords: np.ndarray,
         uv_faces: np.ndarray,
-        flame_faces: Optional[np.ndarray] = None,
+        exclude_faces: Optional[np.ndarray] = None,
+        delight_fit_region: Optional[np.ndarray] = None,
+        delight_strength: Optional[np.ndarray] = None,
+        white_balance: bool = False,
     ) -> Dict[str, np.ndarray]:
         """
-        Project all views onto the UV texture map.
+        photos[i]       : (H, W, 3) uint8 BGR
+        vertices_cam[i] : (V, 3) posed + expressed mesh in OpenCV camera coords (metres)
+        intrinsics_K[i] : (3, 3)
+        skin_masks[i]   : (H, W) bool, True where the photo shows skin
+        exclude_faces   : optional (F,) bool, geometry faces that must not receive texture
+        delight_fit_region : optional (R,R) bool UV mask of plain skin (no brows/eyes/lips). When
+                          given, per-view SH lighting is fitted there and divided out, and the
+                          result also contains 'albedo_rgb' (delit, average tone preserved).
+        delight_strength : optional (R,R) float in [0,1]: exponent on the correction per texel
+                          (lower where coarse normals are unreliable, e.g. eyes and lips).
+        white_balance   : neutralize the light colour (gray-edge, bounded). Off by default: on single
+                          photos clothing and backgrounds dominate the estimate (a blue suit
+                          turned skin green in testing); proper colour-cast removal is Phase 3B.
 
-        Parameters
-        ----------
-        photos : list of (H, W, 3) uint8 BGR images
-        detections : list of FaceDetection objects (with .landmarks_5, .yaw, .pitch, .roll)
-        vertices : (V, 3) mesh vertices in metres
-        faces : (F, 3) triangle face indices
-        vertex_normals : (V, 3) unit vertex normals
-        uv_coords : (UV, 2) UV texture coordinates in [0, 1]
-        uv_faces : (TF, 3) UV face indices
-        flame_faces : (F, 3) geometry face indices (may differ from uv_faces)
-
-        Returns
-        -------
-        dict with keys:
-            'projected_rgb'   : (R, R, 3) float32 [0, 255] — blended texture
-            'projection_mask' : (R, R) uint8 — 255 where data, 0 where unseen
-            'weight_map'      : (R, R) float32 — total accumulated weight per texel
+        Returns projected_rgb (R,R,3) float32 BGR [0,255], projection_mask (R,R) uint8,
+        weight_map (R,R) float32, uv_valid (R,R) bool, per_view_coverage (n_views,).
         """
+        if not (len(photos) == len(vertices_cam) == len(intrinsics_K) == len(skin_masks)):
+            raise ValueError("photos, vertices_cam, intrinsics_K and skin_masks must have equal length.")
         R = self.resolution
-        accum_rgb = np.zeros((R, R, 3), dtype=np.float64)
-        accum_weight = np.zeros((R, R), dtype=np.float64)
+        uvr = self.uv_raster(uv_coords, uv_faces)
+        texel = uvr.mask.copy()
+        if exclude_faces is not None:
+            texel &= ~np.asarray(exclude_faces, bool)[np.clip(uvr.face_id, 0, None)]
+        ty, tx = np.nonzero(texel)
+        fid = uvr.face_id[ty, tx]
+        bary = uvr.bary[ty, tx].astype(np.float64)
+        tri = faces[fid]
 
-        if len(photos) == 0:
-            return {
-                'projected_rgb': np.zeros((R, R, 3), dtype=np.float32),
-                'projection_mask': np.zeros((R, R), dtype=np.uint8),
-                'weight_map': np.zeros((R, R), dtype=np.float32),
-            }
+        accum = np.zeros((R, R, 3), np.float64)
+        accum_alb = np.zeros((R, R, 3), np.float64)
+        wsum = np.zeros((R, R), np.float64)
+        coverage, sh_coeffs = [], []
+        fit_texel = delight_fit_region[ty, tx] if delight_fit_region is not None else None
+        strength_texel = delight_strength[ty, tx] if delight_strength is not None else None
+        wb_gains = []
+        for photo, vc, K, skin in zip(photos, vertices_cam, intrinsics_K, skin_masks):
+            H, W = photo.shape[:2]
+            vc = np.asarray(vc, np.float64)
+            K = np.asarray(K, np.float64)
+            pts = (vc[tri] * bary[..., None]).sum(1)
+            vn = vertex_normals(vc, faces)
+            nrm = (vn[tri] * bary[..., None]).sum(1)
+            nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
+            cos = -(nrm * (pts / np.linalg.norm(pts, axis=1, keepdims=True))).sum(1)
 
-        if flame_faces is None:
-            flame_faces = faces
+            # z-buffer at reduced resolution (occlusion is a low-frequency test)
+            s = min(1.0, self.zbuffer_max_side / max(H, W))
+            Ks = K.copy()
+            Ks[:2] *= s
+            hs, ws = int(round(H * s)), int(round(W * s))
+            vxy, vz = project_points(vc, Ks)
+            zb = rasterize(vxy, vz, faces, hs, ws).depth
 
-        # Precompute per-texel 3D positions and surface normals across the UV map
-        from src.stage3_detail.rasterizer import rasterize_uv_maps
-        _, pos_map, norm_enc, valid_mask_tex = rasterize_uv_maps(
-            flame_verts_m=vertices,
-            flame_normals=vertex_normals,
-            uv_coords=uv_coords,
-            uv_faces=uv_faces,
-            flame_faces=flame_faces,
-            resolution=R,
-        )
-
-        valid_indices = np.where(valid_mask_tex > 0)
-        y_valid, x_valid = valid_indices[0], valid_indices[1]
-
-        if len(y_valid) == 0:
-            return {
-                'projected_rgb': np.zeros((R, R, 3), dtype=np.float32),
-                'projection_mask': np.zeros((R, R), dtype=np.uint8),
-                'weight_map': np.zeros((R, R), dtype=np.float32),
-            }
-
-        pts_3d = pos_map[y_valid, x_valid]  # (K, 3)
-        surf_normals = norm_enc[y_valid, x_valid] * 2.0 - 1.0  # Decoded from [0, 1]
-        n_len = np.linalg.norm(surf_normals, axis=1, keepdims=True) + 1e-8
-        surf_normals = surf_normals / n_len
-
-        # Extract subject-specific 3D landmarks from reconstructed mesh
-        mesh_5_lmk = extract_flame_5_landmarks(vertices, flame_faces)
-
-        for idx, (photo, det) in enumerate(zip(photos, detections)):
-            if det is None or photo is None:
+            pxy, pz = project_points(pts, K)
+            inb = (pxy[:, 0] >= 0) & (pxy[:, 0] < W - 1) & (pxy[:, 1] >= 0) & (pxy[:, 1] < H - 1)
+            zx = np.clip((pxy[:, 0] * s).astype(np.int64), 0, ws - 1)
+            zy = np.clip((pxy[:, 1] * s).astype(np.int64), 0, hs - 1)
+            front = pz <= zb[zy, zx] + self.depth_tol
+            skin_ok = skin[np.clip(pxy[:, 1].astype(np.int64), 0, H - 1),
+                           np.clip(pxy[:, 0].astype(np.int64), 0, W - 1)]
+            keep = inb & front & skin_ok & (cos > self.min_cos)
+            coverage.append(float(keep.sum()) / max(1, len(keep)))
+            if not keep.any():
                 continue
+            col = sample_bilinear(photo, pxy[keep, 0] - 0.5, pxy[keep, 1] - 0.5).astype(np.float64)
+            w = np.clip(cos[keep], 0, 1) ** self.gamma
+            np.add.at(accum, (ty[keep], tx[keep]), col * w[:, None])
+            np.add.at(wsum, (ty[keep], tx[keep]), w)
+            if fit_texel is not None:
+                lin = srgb_to_linear(col[:, ::-1])                       # BGR -> linear RGB
+                sh = fit_sh_shading(lin, nrm[keep], fit_texel[keep])
+                corr = sh["shading"]
+                if strength_texel is not None:
+                    corr = corr ** strength_texel[keep][:, None]
+                gains = white_balance_gains(photo) if white_balance else np.ones(3)
+                wb_gains.append(gains)
+                alb = linear_to_srgb(lin / corr * gains[None])[:, ::-1]   # back to BGR sRGB
+                np.add.at(accum_alb, (ty[keep], tx[keep]), alb * w[:, None])
+                sh_coeffs.append(sh["coeffs"])
 
-            h_img, w_img = photo.shape[:2]
-
-            # Extract pose info from detection
-            landmarks_5 = getattr(det, 'landmarks_5', None)
-            if landmarks_5 is None:
-                landmarks_5 = getattr(det, 'landmarks_5pt', None)
-            if landmarks_5 is None:
-                landmarks_5 = getattr(det, 'kps', None)
-            if landmarks_5 is None:
-                continue
-
-            yaw = getattr(det, 'yaw', None)
-            if yaw is None:
-                yaw = getattr(det, 'yaw_deg', 0.0)
-            pitch = getattr(det, 'pitch', None)
-            if pitch is None:
-                pitch = getattr(det, 'pitch_deg', 0.0)
-            roll = getattr(det, 'roll', None)
-            if roll is None:
-                roll = getattr(det, 'roll_deg', 0.0)
-
-            # Build projection matrix for this view with exact 3D landmarks
-            P = estimate_camera_projection_matrix(
-                landmarks_5, yaw, pitch, roll, (h_img, w_img),
-                mesh_3d_landmarks=mesh_5_lmk
-            )
-
-            # Eye & iris local contrast enhancement on input photo
-            proc_photo = photo.copy()
-            if landmarks_5 is not None and len(landmarks_5) >= 2:
-                try:
-                    r_eye_px, l_eye_px = landmarks_5[0], landmarks_5[1]
-                    iod = float(np.linalg.norm(r_eye_px - l_eye_px))
-                    eye_radius = int(max(10, iod * 0.22))
-                    for eye_pt in (r_eye_px, l_eye_px):
-                        ex, ey = int(round(eye_pt[0])), int(round(eye_pt[1]))
-                        x0_c = max(0, ex - eye_radius)
-                        x1_c = min(w_img, ex + eye_radius)
-                        y0_c = max(0, ey - eye_radius)
-                        y1_c = min(h_img, ey + eye_radius)
-                        if x1_c > x0_c + 4 and y1_c > y0_c + 4:
-                            crop = proc_photo[y0_c:y1_c, x0_c:x1_c]
-                            lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
-                            l_ch, a_ch, b_ch = cv2.split(lab)
-                            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
-                            l_clahe = clahe.apply(l_ch)
-                            blurred = cv2.GaussianBlur(l_clahe, (0, 0), 1.5)
-                            l_sharp = cv2.addWeighted(l_clahe, 1.4, blurred, -0.4, 0)
-                            lab_sharp = cv2.merge([l_sharp, a_ch, b_ch])
-                            enh_bgr = cv2.cvtColor(lab_sharp, cv2.COLOR_LAB2BGR)
-                            yy, xx = np.ogrid[y0_c:y1_c, x0_c:x1_c]
-                            dist = np.sqrt((xx - ex)**2 + (yy - ey)**2) / eye_radius
-                            alpha = np.clip(1.0 - dist, 0.0, 1.0)[:, :, None]
-                            proc_photo[y0_c:y1_c, x0_c:x1_c] = np.clip(
-                                proc_photo[y0_c:y1_c, x0_c:x1_c].astype(np.float32) * (1.0 - alpha) +
-                                enh_bgr.astype(np.float32) * alpha, 0, 255
-                            ).astype(np.uint8)
-                except Exception:
-                    proc_photo = photo
-
-            # Camera position from extrinsic parameters
-            R_mat = P[:3, :3]
-            t_vec = P[:3, 3]
-            try:
-                cam_pos = -np.linalg.inv(R_mat) @ t_vec
-            except np.linalg.LinAlgError:
-                cam_pos = np.array([0, 0, 1.0])
-
-            # Direct per-texel 3D -> 2D projection (explicit coordinates, no BLAS issues)
-            proj_x = pts_3d[:, 0] * P[0, 0] + pts_3d[:, 1] * P[0, 1] + pts_3d[:, 2] * P[0, 2] + P[0, 3]
-            proj_y = pts_3d[:, 0] * P[1, 0] + pts_3d[:, 1] * P[1, 1] + pts_3d[:, 2] * P[1, 2] + P[1, 3]
-            proj_z = pts_3d[:, 0] * P[2, 0] + pts_3d[:, 1] * P[2, 1] + pts_3d[:, 2] * P[2, 2] + P[2, 3]
-            proj_z_safe = np.where(np.abs(proj_z) > 1e-6, proj_z, 1e-6)
-
-            px = (proj_x / proj_z_safe).astype(np.float32)
-            py = (proj_y / proj_z_safe).astype(np.float32)
-
-            # View direction & cosine surface angle
-            view_dirs = cam_pos[np.newaxis, :] - pts_3d  # (K, 3)
-            view_lens = np.linalg.norm(view_dirs, axis=1, keepdims=True) + 1e-8
-            view_dirs_unit = view_dirs / view_lens
-            cos_angles = np.sum(surf_normals * view_dirs_unit, axis=1)
-
-            # Exclude collar clothing region (lowest 16% along Y is clothing/collar)
-            y_min_v, y_max_v = vertices[:, 1].min(), vertices[:, 1].max()
-            y_norm_pts = (pts_3d[:, 1] - y_min_v) / (y_max_v - y_min_v + 1e-8)
-
-            # In-bounds and front-facing condition (cos_angles > 0.05 eliminates backfaces)
-            valid_sample = (
-                (cos_angles > 0.05) &
-                (px >= 0) & (px < w_img - 1) &
-                (py >= 0) & (py < h_img - 1) &
-                (y_norm_pts > 0.16)
-            )
-
-            if not np.any(valid_sample):
-                continue
-
-            sub_idx = np.where(valid_sample)[0]
-            sub_px = px[sub_idx]
-            sub_py = py[sub_idx]
-            sub_cos = cos_angles[sub_idx]
-
-            # Vectorized bilinear sampling from photo
-            x0 = np.floor(sub_px).astype(np.int32)
-            y0 = np.floor(sub_py).astype(np.int32)
-            x1 = x0 + 1
-            y1 = y0 + 1
-
-            dx = (sub_px - x0)[:, None]
-            dy = (sub_py - y0)[:, None]
-
-            c00 = proc_photo[y0, x0].astype(np.float64)
-            c01 = proc_photo[y0, x1].astype(np.float64)
-            c10 = proc_photo[y1, x0].astype(np.float64)
-            c11 = proc_photo[y1, x1].astype(np.float64)
-
-            sampled_color = (
-                (1.0 - dx) * (1.0 - dy) * c00 +
-                dx * (1.0 - dy) * c01 +
-                (1.0 - dx) * dy * c10 +
-                dx * dy * c11
-            )
-
-            det_score = float(getattr(det, 'det_score', 1.0))
-            sample_weights = (sub_cos ** self.gamma) * det_score
-
-            tex_y = y_valid[sub_idx]
-            tex_x = x_valid[sub_idx]
-
-            accum_rgb[tex_y, tex_x] += sampled_color * sample_weights[:, None]
-            accum_weight[tex_y, tex_x] += sample_weights
-
-            print(f"  [Stage 6] View {idx+1}/{len(photos)}: "
-                  f"{len(sub_idx):,} projected texels sampled, "
-                  f"yaw={yaw:.1f}°")
-
-        # Normalize accumulated colours
-        valid_mask = accum_weight > 0
-        projected_rgb = np.zeros((R, R, 3), dtype=np.float32)
-        for c in range(3):
-            projected_rgb[:, :, c] = np.where(
-                valid_mask,
-                accum_rgb[:, :, c] / (accum_weight + 1e-10),
-                0.0
-            )
-
-        # Inpaint internal cavity / occluded regions within the facial mesh hull (mouth cavity, ear depth)
-        unseen_hull = (valid_mask_tex > 0) & (~valid_mask)
-        if np.any(unseen_hull) and np.any(valid_mask):
-            inpaint_mask = unseen_hull.astype(np.uint8) * 255
-            rgb_uint8 = np.clip(projected_rgb, 0, 255).astype(np.uint8)
-            inpainted_bgr = cv2.inpaint(rgb_uint8, inpaint_mask, inpaintRadius=5, flags=cv2.INPAINT_TELEA)
-            projected_rgb[unseen_hull] = inpainted_bgr[unseen_hull].astype(np.float32)
-            valid_mask = valid_mask | unseen_hull
-
-        projection_mask = np.where(valid_mask, 255, 0).astype(np.uint8)
-
+        observed = wsum > 0
+        rgb = np.zeros((R, R, 3), np.float32)
+        rgb[observed] = (accum[observed] / wsum[observed, None]).astype(np.float32)
+        out_extra = {}
+        if fit_texel is not None:
+            alb = np.zeros((R, R, 3), np.float32)
+            alb[observed] = (accum_alb[observed] / wsum[observed, None]).astype(np.float32)
+            out_extra = {"albedo_rgb": alb, "sh_coeffs": np.asarray(sh_coeffs, np.float32),
+                         "white_balance_gains": np.asarray(wb_gains, np.float32)}
         return {
-            'projected_rgb': projected_rgb.astype(np.float32),
-            'projection_mask': projection_mask,
-            'weight_map': accum_weight.astype(np.float32),
+            **out_extra,
+            "projected_rgb": rgb,
+            "projection_mask": np.where(observed, 255, 0).astype(np.uint8),
+            "weight_map": wsum.astype(np.float32),
+            "uv_valid": uvr.mask,
+            "per_view_coverage": np.asarray(coverage, np.float32),
         }
 
-    def save_maps(
-        self,
-        result: Dict[str, np.ndarray],
-        output_dir: Union[str, Path],
-        prefix: str = "head",
-    ) -> Dict[str, str]:
-        """Save projected texture and mask to disk."""
-        out = Path(output_dir)
-        textures_dir = out / "textures"
-        textures_dir.mkdir(parents=True, exist_ok=True)
-
-        rgb = result['projected_rgb']
-        mask = result['projection_mask']
-
-        # Convert float RGB to uint8 BGR for OpenCV
-        rgb_uint8 = np.clip(rgb, 0, 255).astype(np.uint8)
-
-        projected_path = textures_dir / f"{prefix}_projected_raw.png"
-        mask_path = textures_dir / f"{prefix}_projection_mask.png"
-
-        cv2.imwrite(str(projected_path), rgb_uint8)
-        cv2.imwrite(str(mask_path), mask)
-
-        return {
-            'projected_texture': str(projected_path),
-            'projection_mask': str(mask_path),
-        }
+    def save_maps(self, result: Dict[str, np.ndarray], output_dir: Union[str, Path], prefix: str = "head") -> Dict[str, str]:
+        tex_dir = Path(output_dir) / "textures"
+        tex_dir.mkdir(parents=True, exist_ok=True)
+        p_rgb = tex_dir / f"{prefix}_projected_raw.png"
+        p_mask = tex_dir / f"{prefix}_projection_mask.png"
+        cv2.imwrite(str(p_rgb), np.clip(result["projected_rgb"], 0, 255).astype(np.uint8))
+        cv2.imwrite(str(p_mask), result["projection_mask"])
+        return {"projected_texture": str(p_rgb), "projection_mask": str(p_mask)}

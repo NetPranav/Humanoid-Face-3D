@@ -49,7 +49,7 @@ def ingest_session(
     if missing_required:
         raise FileNotFoundError(
             f"Missing required camera views in session {session_path.name}: {missing_required}. "
-            "Refer to DOCS/data_collection_protocol.md for required capture layout."
+            "Refer to older/data_collection_protocol.md for required capture layout."
         )
 
     print(f"Found {len(discovered_views)} view(s): {list(discovered_views.keys())}")
@@ -99,7 +99,7 @@ def ingest_session(
         except Exception as e:
             print(f"  ⚠️ Warning: Could not parse metadata.json in session: {e}")
     else:
-        print("  ⚠️ Note: No metadata.json found. Consider recording morphology attributes per DOCS/04_diversity_and_identity_fidelity.md")
+        print("  ⚠️ Note: No metadata.json found. Consider recording morphology attributes per older/04_diversity_and_identity_fidelity.md")
 
     # Package session manifest
     manifest = {

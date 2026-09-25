@@ -1,18 +1,12 @@
 """
-Stage 7: AI Delighting + UV Inpainting.
+Stage 7: UV completion (Phase 3A).
 
-Removes environment lighting from projected textures to produce clean
-diffuse albedo maps, and fills unseen UV regions using procedural
-Gaussian dilation or optional neural inpainting (LaMa).
+  uv_fill.py         provenance-aware fill: observed / mirrored / synthesized / interpolated,
+                     seam-free mesh-harmonic colour, lip-only lip fill
+  skin_synthesis.py  the subject's own skin grain quilted into unseen areas
+
+Delighting itself happens during projection (src/stage6_texture/projector.py, fitted SH).
 """
-from src.stage7_delight.delight_net import (
-    DelightingPipeline,
-    DelightUNet,
-    UVInpainter,
-)
+from src.stage7_delight.uv_fill import ProvenanceUVFill, load_or_build_mirror_map
 
-__all__ = [
-    "DelightingPipeline",
-    "DelightUNet",
-    "UVInpainter",
-]
+__all__ = ["ProvenanceUVFill", "load_or_build_mirror_map"]

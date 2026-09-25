@@ -132,11 +132,9 @@ class FaceDetector:
 
     def _align_crop(self, img: np.ndarray, kps: np.ndarray, size: int) -> np.ndarray:
         """Standard ArcFace similarity-transform alignment."""
-        try:
-            from insightface.utils import face_align
-            return face_align.norm_crop(img, kps, image_size=size)
-        except Exception:
-            return cv2.resize(img, (size, size))
+        # No fallback: a plain resize is not an aligned crop and would silently corrupt MICA's input.
+        from insightface.utils import face_align
+        return face_align.norm_crop(img, kps, image_size=size)
 
     def detect_single(self, image_bgr: np.ndarray) -> Optional[FaceDetection]:
         """Returns the highest-confidence face detection, or None."""

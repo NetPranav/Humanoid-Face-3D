@@ -60,6 +60,10 @@ def parse_args(args_list: Optional[List[str]] = None):
     parser.add_argument("--coat_weight", default=None, help="Path to coat weight texture map")
     parser.add_argument("--normal", default=None, help="Path to tangent normal map")
     parser.add_argument("--displacement", default=None, help="Path to 16-bit displacement map")
+    parser.add_argument("--displacement_scale_m", type=float, default=None,
+                        help="Full [0,1] height range of the displacement PNG in metres (2 x max_scale_mm / 1000, "
+                             "from the run manifest). Displacement is only applied when this is given, so the "
+                             "normal map and displacement never double-count the same detail.")
     parser.add_argument("--cavity", default=None, help="Path to cavity/AO texture map")
     parser.add_argument("--sss", default=None, help="Path to SSS thickness map")
     parser.add_argument("--output", default="film_render_cycles.png", help="Path to rendered output PNG")
@@ -215,10 +219,10 @@ def build_blender_scene(args, textures: Dict[str, Optional[Path]]):
     head_obj.data.materials.clear()
     head_obj.data.materials.append(mat)
 
-    # Enable True Displacement in material settings
+    disp_scale_m = getattr(args, 'displacement_scale_m', None)
     try:
-        mat.cycles.displacement_method = 'DISPLACEMENT_AND_BUMP'
-    except Exception:
+        mat.cycles.displacement_method = 'DISPLACEMENT' if disp_scale_m else 'BUMP'
+    except AttributeError:
         pass
 
     nodes = mat.node_tree.nodes
@@ -361,13 +365,13 @@ def build_blender_scene(args, textures: Dict[str, Optional[Path]]):
         links.new(node_norm_img.outputs['Color'], node_norm_map.inputs['Color'])
         links.new(node_norm_map.outputs['Normal'], node_bsdf.inputs['Normal'])
 
-    # Connect 16-Bit Displacement Map (0.8 mm physical scale)
-    if textures['displacement'] and textures['displacement'].exists():
+    # Connect 16-bit displacement only with an explicit physical scale (Phase 0: one unit system)
+    if disp_scale_m and textures['displacement'] and textures['displacement'].exists():
         node_disp_img = add_image_node(textures['displacement'], 'Non-Color', loc=(-400, -750))
         node_disp = nodes.new(type='ShaderNodeDisplacement')
         node_disp.location = (200, -650)
         node_disp.inputs['Midlevel'].default_value = 0.50
-        node_disp.inputs['Scale'].default_value = 0.0008  # 0.8 mm maximum displacement
+        node_disp.inputs['Scale'].default_value = float(disp_scale_m)
         links.new(node_disp_img.outputs['Color'], node_disp.inputs['Height'])
         links.new(node_disp.outputs['Displacement'], node_output.inputs['Displacement'])
 
@@ -616,6 +620,8 @@ def execute_film_render(args) -> Dict[str, Any]:
         flag_pairs.append(("--normal", [str(Path(args.normal).resolve())]))
     if args.displacement:
         flag_pairs.append(("--displacement", [str(Path(args.displacement).resolve())]))
+    if getattr(args, 'displacement_scale_m', None):
+        flag_pairs.append(("--displacement_scale_m", [str(args.displacement_scale_m)]))
     if args.cavity:
         flag_pairs.append(("--cavity", [str(Path(args.cavity).resolve())]))
     if args.sss:

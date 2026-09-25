@@ -85,3 +85,8 @@ uv_displacement_dataset/
 .vscode/
 .idea/
 notebooks/kaggle/build_*/
+
+# Golden evaluation set: photos stay out of git, manifest (sources + licenses) is tracked
+data/golden_set/**
+!data/golden_set/
+!data/golden_set/manifest.json

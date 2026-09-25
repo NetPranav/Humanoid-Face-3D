@@ -1,31 +1,22 @@
 """
-Stage 3 Micro-Detail GAN Module.
+Stage 3: geometric detail.
+
+  sculpt_detail.py  Phase 4A sculpt detail (photo-derived creases + synthesized micro detail)
+  fusion.py         roughness / cavity / coat maps from the composite displacement
+  rasterizer.py     FLAME UV layout loading and UV-space rasterization helpers
 """
-from src.stage3_detail.generator import DetailGenerator
-from src.stage3_detail.discriminator import DetailDiscriminator
-from src.stage3_detail.inference import DetailSynthesizer
-from src.stage3_detail.photometric_detail import PhotometricDetailExtractor
-from src.stage3_detail.anatomical_pores import AnatomicalPoreSynthesizer
 from src.stage3_detail.fusion import MultiTierDetailFusion
 from src.stage3_detail.rasterizer import (
-    load_flame_uv_layout,
-    load_flame_geometry_faces,
     compute_vertex_normals,
-    rasterize_uv_maps
+    load_flame_geometry_faces,
+    load_flame_uv_layout,
+    rasterize_uv_maps,
 )
 
-MultiScalePatchGAN = DetailDiscriminator
-
 __all__ = [
-    'DetailGenerator',
-    'DetailDiscriminator',
-    'MultiScalePatchGAN',
-    'DetailSynthesizer',
-    'PhotometricDetailExtractor',
-    'AnatomicalPoreSynthesizer',
-    'MultiTierDetailFusion',
-    'load_flame_uv_layout',
-    'load_flame_geometry_faces',
-    'compute_vertex_normals',
-    'rasterize_uv_maps',
+    "MultiTierDetailFusion",
+    "load_flame_uv_layout",
+    "load_flame_geometry_faces",
+    "compute_vertex_normals",
+    "rasterize_uv_maps",
 ]

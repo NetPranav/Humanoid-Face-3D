@@ -17,8 +17,6 @@ from typing import Dict, Optional, Tuple, Union
 import cv2
 import numpy as np
 
-from src.stage3_detail.photometric_detail import PhotometricDetailExtractor
-from src.stage3_detail.anatomical_pores import AnatomicalPoreSynthesizer
 
 
 class MultiTierDetailFusion:
