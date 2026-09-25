@@ -129,7 +129,7 @@ def reconstruction_error(recon_vertices: np.ndarray, flame: FLAMEModel, scan: tr
 
 
 def model_capacity(flame: FLAMEModel, scan: trimesh.Trimesh, scan_lmk3d: np.ndarray, emb_path: str,
-                   iters: int = 300, n_shape: int = 300) -> Dict[str, float]:
+                   iters: int = 600, n_shape: int = 300) -> Dict[str, float]:
     """
     Fits β (n_shape), ψ (100), jaw and a similarity transform of FLAME directly to the scan
     surface (face region), alternating closest-point matching and gradient steps. Errors are
@@ -174,8 +174,9 @@ def model_capacity(flame: FLAMEModel, scan: trimesh.Trimesh, scan_lmk3d: np.ndar
             cp, d, _ = trimesh.proximity.closest_point(scan, x.detach().numpy())
             tgt = torch.as_tensor(cp, dtype=torch.float32)
             w = torch.as_tensor((d < np.percentile(d, 95)).astype(np.float32))
-        loss = ((x - tgt).pow(2).sum(1) * w).sum() / w.sum() / torch.exp(ls) ** 2 \
-            + 1e-6 * (beta.pow(2).sum() + psi.pow(2).sum())
+        # residual in mm (scan units -> metres via the fitted scale); O(1) gradients for Adam
+        res_mm = (x - tgt) / torch.exp(ls) * 1000.0
+        loss = (res_mm.pow(2).sum(1) * w).sum() / w.sum() + 1e-3 * (beta.pow(2).sum() + psi.pow(2).sum())
         opt.zero_grad()
         loss.backward()
         opt.step()
